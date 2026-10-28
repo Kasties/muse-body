@@ -15,7 +15,12 @@ class SteerParams:
     arrive_height: float = 0.55
     # Bearing (degrees) inside which the agent walks instead of only turning.
     walk_cone_deg: float = 12.0
-    turn_gain: float = 1.0 / 30.0
+    # Live (10-28): LookHorizontal -1 for 0.3 s turned ~68 deg, so ~1/65 turns the full
+    # bearing in one 0.3 s pulse; 1/75 undershoots slightly instead of oscillating.
+    turn_gain: float = 1.0 / 75.0
+    # A box this tall that reaches the bottom edge is close (short or sitting avatars
+    # never reach arrive_height; walking on loses them below the view).
+    arrive_height_at_edge: float = 0.18
 
 
 @dataclass(frozen=True)
@@ -37,7 +42,8 @@ def bearing_deg(det: Detection, fov_v_deg: float) -> float:
 def steer(det: Detection, p: SteerParams = SteerParams()) -> Command:
     b = bearing_deg(det, p.fov_v_deg)
     turn = max(-1.0, min(1.0, b * p.turn_gain))
-    if det.height_frac >= p.arrive_height:
+    at_bottom = det.y2 >= det.frame_h - 2
+    if det.height_frac >= p.arrive_height or (at_bottom and det.height_frac >= p.arrive_height_at_edge):
         return Command(0.0, turn if abs(b) > p.walk_cone_deg else 0.0, b, True)
     forward = 1.0 if abs(b) <= p.walk_cone_deg else 0.0
     return Command(forward, turn, b, False)

@@ -29,6 +29,12 @@ def test_big_centered_target_arrived():
     assert cmd.arrived and cmd.forward == 0.0 and cmd.turn == 0.0
 
 
+def test_short_target_touching_bottom_arrived():
+    # Live 10-28: sitting raccoon at (505,567)-(811,719) was lost one pulse later.
+    assert steer(box(505, 567, 811, 719)).arrived
+    assert not steer(box(600, 300, 680, 420)).arrived
+
+
 def test_pick_prefers_confident():
     a, b = box(0, 0, 500, 500, conf=0.35), box(0, 0, 50, 50, conf=0.9)
     assert pick([a, b]) is b
