@@ -21,11 +21,26 @@ Choose ONE next intention. Reply with a single JSON object only:
 {
   "observation": "<one sentence: what you see>",
   "intent": "approach" | "look_around" | "wave" | "say" | "wait",
-  "target": "<short noun phrase for the thing to approach, e.g. 'person in a red jacket', else null>",
+  "target": "<2-4 word visual description of the thing to approach, else null>",
+  "target_xy": [<x>, <y>] or null,
   "say": "<chat text if intent is say or wave, else null>",
   "why": "<one short reason>"
 }
+"target" is passed to a segmentation model, so describe what it LOOKS like: species,
+colour, clothing ("raccoon", "green dinosaur", "girl with pink hair"). Never use bare words
+like "person", "avatar" or "player": avatars are stylised and those words match nothing.
+"target_xy" is where the target is in this frame, in 0-1000 coordinates (0,0 top-left).
+Ignore mirror reflections, menus, thumbnails and HUD overlays: they cannot be walked to.
 Prefer approaching people, then greeting them once you are close. Keep chat short and friendly."""
+
+
+def parse_xy(value) -> tuple[float, float] | None:
+    """A [x, y] pair in 0-1000 frame coordinates, or None."""
+    try:
+        x, y = (float(v) for v in value)
+    except (TypeError, ValueError):
+        return None
+    return (x, y) if 0 <= x <= 1000 and 0 <= y <= 1000 else None
 
 
 @dataclass
@@ -70,11 +85,14 @@ class Agent:
         except ValueError:
             return {"intent": "wait", "why": "unparseable reply", "raw": reply[:300]}
 
-    def approach(self, target: str, max_steps: int = 12) -> bool:
+    def approach(self, target: str, hint: tuple[float, float] | None = None, max_steps: int = 12) -> bool:
         """Closed loop on SAM boxes until the target fills enough of the view."""
         for _ in range(max_steps):
             frame = self.cam.grab()
-            det = pick(self.api.segment(frame, target))
+            det = pick(self.api.segment(frame, target), hint=hint)
+            if det is not None:
+                # Follow the box we chose, not whatever else matches the phrase.
+                hint = (1000 * det.center[0] / det.frame_w, 1000 * det.center[1] / det.frame_h)
             if det is None:
                 self.memory.add(f"lost sight of {target}")
                 self.log(frame, {"phase": "approach", "target": target, "found": False})
@@ -99,7 +117,7 @@ class Agent:
         intent = d.get("intent")
         print(f"[{self.step}] {intent}: {d.get('observation')} ({d.get('why')})")
         if intent == "approach" and d.get("target"):
-            self.approach(str(d["target"]))
+            self.approach(str(d["target"]), hint=parse_xy(d.get("target_xy")))
         elif intent == "look_around":
             self.body.pulse(turn=0.6, seconds=0.5)
             self.memory.add("turned to look around")

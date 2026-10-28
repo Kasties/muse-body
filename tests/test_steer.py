@@ -34,6 +34,15 @@ def test_pick_prefers_confident():
     assert pick([box(0, 0, 10, 10, conf=0.1)]) is None
 
 
+def test_pick_hint_beats_confidence():
+    # Real case from rig3: "green dinosaur" matched the HUD preview (top right, 0.85)
+    # and the reflection in the mirror (centre, 0.84).
+    hud, body = box(991, 43, 1185, 249, conf=0.85), box(623, 336, 679, 471, conf=0.84)
+    assert pick([hud, body]) is hud
+    assert pick([hud, body], hint=(510, 560)) is body
+    assert pick([hud, body], hint=(400, 600)) is body  # nearest when no box contains it
+
+
 def test_extract_json_tolerates_fences():
     assert extract_json('Sure!\n```json\n{"intent": "wait"}\n```')["intent"] == "wait"
     assert extract_json('{"intent": "say", "say": "hi"} trailing')["say"] == "hi"

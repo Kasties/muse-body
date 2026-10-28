@@ -58,11 +58,17 @@ class MetaClient:
     def close(self) -> None:
         self.http.close()
 
-    def see(self, image: Image.Image, system: str, prompt: str, max_tokens: int = 1024) -> str:
-        """Ask Muse Spark about one frame; returns the reply text."""
+    def see(self, image: Image.Image, system: str, prompt: str, max_tokens: int = 4096,
+            reasoning_effort: str = "low") -> str:
+        """Ask Muse Spark about one frame; returns the reply text.
+
+        Muse Spark always reasons and max_tokens covers reasoning too: one decision
+        spends 600-1000 reasoning tokens, so a 1024 cap can leave the answer empty.
+        """
         body = {
             "model": self.settings.model,
             "max_tokens": max_tokens,
+            "reasoning_effort": reasoning_effort,
             "messages": [
                 {"role": "system", "content": system},
                 {
