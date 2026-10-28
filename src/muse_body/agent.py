@@ -43,6 +43,16 @@ def parse_xy(value) -> tuple[float, float] | None:
     return (x, y) if 0 <= x <= 1000 and 0 <= y <= 1000 else None
 
 
+def phrase_tails(target: str, shortest: int = 1) -> list[str]:
+    """'green striped dinosaur' -> ['green striped dinosaur', 'striped dinosaur', 'dinosaur'],
+    plus the first adjective with the noun ('green dinosaur'), which SAM often likes best."""
+    words = target.split()
+    out = [" ".join(words[i:]) for i in range(len(words) - shortest + 1)]
+    if len(words) >= 3:
+        out.insert(1, f"{words[0]} {words[-1]}")
+    return list(dict.fromkeys(out))
+
+
 @dataclass
 class Memory:
     """A short rolling log of what the agent did, fed back into the next decision."""
@@ -85,20 +95,37 @@ class Agent:
         except ValueError:
             return {"intent": "wait", "why": "unparseable reply", "raw": reply[:300]}
 
+    def ground(self, frame: Image.Image, target: str, hint: tuple[float, float] | None):
+        """SAM on the phrase, then on shorter tails of it: long phrases lose recall
+        ("green striped dinosaur" found nothing where "green dinosaur" did)."""
+        for phrase in phrase_tails(target):
+            det = pick(self.api.segment(frame, phrase), hint=hint)
+            if det is not None:
+                return det, phrase
+        return None, target
+
     def approach(self, target: str, hint: tuple[float, float] | None = None, max_steps: int = 12) -> bool:
         """Closed loop on SAM boxes until the target fills enough of the view."""
-        for _ in range(max_steps):
+        bearings: list[float] = []
+        for i in range(max_steps):
             frame = self.cam.grab()
-            det = pick(self.api.segment(frame, target), hint=hint)
-            if det is not None:
-                # Follow the box we chose, not whatever else matches the phrase.
-                hint = (1000 * det.center[0] / det.frame_w, 1000 * det.center[1] / det.frame_h)
+            det, phrase = self.ground(frame, target, hint)
             if det is None:
-                self.memory.add(f"lost sight of {target}")
+                self.memory.add(f"segmentation found no {target!r} in view" if i == 0 else f"lost sight of {target!r}")
                 self.log(frame, {"phase": "approach", "target": target, "found": False})
                 self.body.stop()
                 return False
+            # Follow the box we chose, and the phrase that found it.
+            hint = (1000 * det.center[0] / det.frame_w, 1000 * det.center[1] / det.frame_h)
+            target = phrase
             cmd = steer(det, self.steer_params)
+            bearings.append(cmd.bearing_deg)
+            if len(bearings) >= 4 and max(bearings[-4:]) - min(bearings[-4:]) < 1.0 and not cmd.arrived:
+                # Three moves and the target has not shifted in view: the body is not moving.
+                self.memory.add(f"moving toward {target!r} did not change the view (stuck?)")
+                self.log(frame, {"phase": "approach", "target": target, "stalled": True})
+                self.body.stop()
+                return False
             self.log(frame, {"phase": "approach", "target": target, "box": [det.x1, det.y1, det.x2, det.y2],
                              "conf": det.conf, "bearing": round(cmd.bearing_deg, 1), "arrived": cmd.arrived})
             if cmd.arrived and cmd.turn == 0.0:

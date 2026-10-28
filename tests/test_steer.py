@@ -1,3 +1,4 @@
+from muse_body.agent import phrase_tails
 from muse_body.meta_api import extract_json
 from muse_body.sam_format import Detection
 from muse_body.steer import bearing_deg, pick, steer
@@ -41,6 +42,12 @@ def test_pick_hint_beats_confidence():
     assert pick([hud, body]) is hud
     assert pick([hud, body], hint=(510, 560)) is body
     assert pick([hud, body], hint=(400, 600)) is body  # nearest when no box contains it
+
+
+def test_phrase_tails():
+    assert phrase_tails("green striped dinosaur") == [
+        "green striped dinosaur", "green dinosaur", "striped dinosaur", "dinosaur"]
+    assert phrase_tails("raccoon") == ["raccoon"]
 
 
 def test_extract_json_tolerates_fences():
