@@ -28,6 +28,16 @@ def _window_rect(title: str) -> dict[str, int] | None:
     return {"left": origin.x, "top": origin.y, "width": w, "height": h}
 
 
+def is_foreground(title: str = "VRChat") -> bool | None:
+    """Whether the window has focus. VRChat ignores gamepad input while unfocused
+    (10-28: inputs sent while tabbed out were lost). None off Windows."""
+    if sys.platform != "win32":
+        return None
+    user32 = ctypes.windll.user32
+    hwnd = user32.FindWindowW(None, title)
+    return bool(hwnd) and user32.GetForegroundWindow() == hwnd
+
+
 class Camera:
     def __init__(self, window_title: str = "VRChat", monitor: int = 1, max_width: int = 1280):
         self.window_title = window_title

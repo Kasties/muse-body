@@ -10,8 +10,8 @@ from pathlib import Path
 
 from PIL import Image
 
-from .body import Body
-from .capture import Camera
+from .body import GESTURES, Body
+from .capture import Camera, is_foreground
 from .config import Settings
 from .meta_api import MetaClient, extract_json
 from .senses import Senses
@@ -21,10 +21,11 @@ SYSTEM = """You are the mind of an avatar in VRChat. You see one first-person fr
 Choose ONE next intention. Reply with a single JSON object only:
 {
   "observation": "<one sentence: what you see>",
-  "intent": "approach" | "look_around" | "wave" | "say" | "wait",
-  "target": "<2-4 word visual description of the thing to approach, else null>",
+  "intent": "approach" | "look_around" | "wave" | "say" | "gesture" | "grab" | "drop" | "crouch" | "wait",
+  "target": "<2-4 word visual description of the thing to approach or grab, else null>",
   "target_xy": [<x>, <y>] or null,
   "say": "<chat text if intent is say or wave, else null>",
+  "gesture": "fist" | "open" | "point" | "victory" | "rocknroll" | "gun" | "thumbsup" | "neutral" | null,
   "why": "<one short reason>"
 }
 "target" is passed to a segmentation model, so describe what it LOOKS like: species,
@@ -32,6 +33,9 @@ colour, clothing ("raccoon", "green dinosaur", "girl with pink hair"). Never use
 like "person", "avatar" or "player": avatars are stylised and those words match nothing.
 "target_xy" is where the target is in this frame, in 0-1000 coordinates (0,0 top-left).
 Ignore mirror reflections, menus, thumbnails and HUD overlays: they cannot be walked to.
+"gesture" shows a hand sign with your right hand (it stays until you pick another; "neutral" relaxes it).
+"grab" walks to a small loose object and picks it up with the right hand; "drop" lets go.
+"crouch" toggles crouching.
 Prefer approaching people, then greeting them once you are close. Keep chat short and friendly."""
 
 
@@ -153,6 +157,8 @@ class Agent:
 
     def tick(self) -> None:
         self.step += 1
+        if is_foreground() is False:
+            print(f"[{self.step}] warning: VRChat is not the focused window; controller input will be ignored")
         frame = self.cam.grab()
         d = self.decide(frame)
         self.log(frame, {"phase": "decide", **d})
@@ -171,6 +177,21 @@ class Agent:
         elif intent == "say" and d.get("say"):
             self.body.say(str(d["say"]))
             self.memory.add(f"said {d['say']!r}")
+        elif intent == "gesture" and d.get("gesture") in GESTURES:
+            self.body.gesture(str(d["gesture"]))
+            self.memory.add(f"right hand now shows {d['gesture']}")
+        elif intent == "grab" and d.get("target"):
+            if self.approach(str(d["target"]), hint=parse_xy(d.get("target_xy"))):
+                # Desktop interaction targets the screen-centre crosshair; approach() leaves
+                # the target centred in yaw. Pitch aiming is not calibrated yet.
+                self.body.interact()
+                self.memory.add(f"tried to pick up {d['target']} (check the hand)")
+        elif intent == "drop":
+            self.body.drop()
+            self.memory.add("dropped what was in the right hand")
+        elif intent == "crouch":
+            self.body.crouch_toggle()
+            self.memory.add("toggled crouch")
         else:
             self.memory.add("waited")
             time.sleep(1.0)

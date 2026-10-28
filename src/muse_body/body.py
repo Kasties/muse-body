@@ -14,6 +14,10 @@ import time
 from pythonosc.udp_client import SimpleUDPClient
 
 
+# VRChat's standard hand gestures, in GestureLeft/GestureRight order.
+GESTURES = ["neutral", "fist", "open", "point", "victory", "rocknroll", "gun", "thumbsup"]
+
+
 def _clamp(v: float) -> float:
     return float(max(-1.0, min(1.0, v)))
 
@@ -71,6 +75,7 @@ class PadLocomotion:
     turn_slope = 700.0  # deg/s per stick unit above the dead zone
     max_turn_rate = 200.0
     walk_stick = 0.6  # ~2.2 m/s: slow enough to stop near a person
+    warmup_seconds = 3.0
 
     def turn_stick(self, rate: float) -> float:
         if rate == 0:
@@ -104,13 +109,23 @@ class PadLocomotion:
             ) from e
         self.pad.reset()
         self.pad.update()
+        # VRChat ignores a newly plugged pad for a few seconds ("Controller Connected"
+        # toast). Then a nudge inside the stick dead zone makes it the active device
+        # without moving anything.
+        time.sleep(self.warmup_seconds)
+        self.sticks(0.0, 0.0, 0.3, 0.0)
+        time.sleep(0.3)
+        self.sticks(0.0, 0.0, 0.0, 0.0)
 
     def set(self, forward: float, strafe: float, turn: float, pitch: float) -> None:
+        self.sticks(strafe, forward, turn, pitch)
+
+    def sticks(self, lx: float, ly: float, rx: float, ry: float) -> None:
         if self.dry_run:
-            print(f"[pad] move=({strafe:+.2f},{forward:+.2f}) look=({turn:+.2f},{pitch:+.2f})")
+            print(f"[pad] left=({lx:+.2f},{ly:+.2f}) right=({rx:+.2f},{ry:+.2f})")
             return
-        self.pad.left_joystick_float(_clamp(strafe), _clamp(forward))
-        self.pad.right_joystick_float(_clamp(turn), _clamp(pitch))
+        self.pad.left_joystick_float(_clamp(lx), _clamp(ly))
+        self.pad.right_joystick_float(_clamp(rx), _clamp(ry))
         self.pad.update()
 
     def button(self, name: str, down: bool) -> None:
@@ -172,6 +187,38 @@ class Body:
 
     def jump(self) -> None:
         self.press("A")
+
+    # VRChat desktop gamepad bindings (wiki.vrchat.com/wiki/Controls). Verified live 10-28:
+    # gestures (RB + stick, GestureLeft/Right over OSC) and crouch (LS click, Upright 1.0 <-> 0.6).
+    # From the wiki only, not yet verified: LT/RT interact/pick up, B/X drop.
+
+    def interact(self, hand: str = "right") -> None:
+        """Interact with / pick up whatever is under the screen-centre crosshair."""
+        self.press("RT" if hand == "right" else "LT", seconds=0.15)
+
+    def drop(self, hand: str = "right") -> None:
+        self.press("B" if hand == "right" else "X")
+
+    def crouch_toggle(self) -> None:
+        self.press("LS")
+
+    def gesture(self, name: str, hand: str = "right", hold: float = 0.5) -> None:
+        """Select a hand gesture: RB held, stick pushed to the gesture's direction.
+        The gesture stays until another is selected; 'neutral' (stick up) resets it."""
+        if not isinstance(self.loco, PadLocomotion):
+            raise ValueError("gestures need the pad (GestureLeft/Right are read-only over OSC)")
+        index = GESTURES.index(name)
+        # 0 is straight up, then clockwise in 45 degree steps (measured: NE=1 ... NW=7).
+        a = math.radians(90 - 45 * index)
+        x, y = math.cos(a), math.sin(a)
+        stick = (0.0, 0.0, x, y) if hand == "right" else (x, y, 0.0, 0.0)
+        self.loco.button("RB", True)
+        time.sleep(0.15)
+        self.loco.sticks(*stick)
+        time.sleep(hold)
+        self.loco.sticks(0.0, 0.0, 0.0, 0.0)
+        time.sleep(0.2)
+        self.loco.button("RB", False)
 
     def say(self, text: str) -> None:
         # Chatbox: text, send immediately, no notification sound.
