@@ -29,7 +29,8 @@ Choose ONE next intention. Reply with a single JSON object only:
   "why": "<one short reason>"
 }
 "target" is passed to a segmentation model, so describe what it LOOKS like: species,
-colour, clothing ("raccoon", "green dinosaur", "girl with pink hair"). Never use bare words
+colour, clothing ("raccoon", "green dinosaur", "girl with pink hair"). Name the object itself
+with its usual noun ("black clipboard"), not what it stands on ("menu stand"). Never use bare words
 like "person", "avatar" or "player": avatars are stylised and those words match nothing.
 "target_xy" is where the target is in this frame, in 0-1000 coordinates (0,0 top-left).
 Ignore mirror reflections, menus, thumbnails and HUD overlays: they cannot be walked to.
@@ -52,11 +53,14 @@ def parse_xy(value) -> tuple[float, float] | None:
 
 def phrase_tails(target: str, shortest: int = 1) -> list[str]:
     """'green striped dinosaur' -> ['green striped dinosaur', 'striped dinosaur', 'dinosaur'],
-    plus the first adjective with the noun ('green dinosaur'), which SAM often likes best."""
+    plus the first adjective with the noun ('green dinosaur'), which SAM often finds when longer
+    phrases miss."""
     words = target.split()
     out = [" ".join(words[i:]) for i in range(len(words) - shortest + 1)]
     if len(words) >= 3:
-        out.insert(1, f"{words[0]} {words[-1]}")
+        # After the contiguous tails, before the bare noun: "black menu stand" must try
+        # "menu stand" before "black stand" (live 10-28: that matched only the stand's base).
+        out.insert(len(out) - 1, f"{words[0]} {words[-1]}")
     return list(dict.fromkeys(out))
 
 

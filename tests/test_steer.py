@@ -52,7 +52,7 @@ def test_pick_hint_beats_confidence():
 
 def test_phrase_tails():
     assert phrase_tails("green striped dinosaur") == [
-        "green striped dinosaur", "green dinosaur", "striped dinosaur", "dinosaur"]
+        "green striped dinosaur", "striped dinosaur", "green dinosaur", "dinosaur"]
     assert phrase_tails("raccoon") == ["raccoon"]
 
 
