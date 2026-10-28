@@ -15,7 +15,7 @@ from .capture import Camera, is_foreground
 from .config import Settings
 from .meta_api import MetaClient, extract_json
 from .senses import Senses
-from .steer import SteerParams, pick, steer
+from .steer import SteerParams, bearing_deg, elevation_deg, pick, steer
 
 SYSTEM = """You are the mind of an avatar in VRChat. You see one first-person frame at a time.
 Choose ONE next intention. Reply with a single JSON object only:
@@ -35,6 +35,8 @@ like "person", "avatar" or "player": avatars are stylised and those words match 
 Ignore mirror reflections, menus, thumbnails and HUD overlays: they cannot be walked to.
 "gesture" shows a hand sign with your right hand (it stays until you pick another; "neutral" relaxes it).
 "grab" walks to a small loose object and picks it up with the right hand; "drop" lets go.
+While you hold something, the HUD on the right shows a "Drop (B)" prompt; a prompt with an
+RT icon and a name means your crosshair is on something you can grab or use.
 "crouch" toggles crouching.
 Prefer approaching people, then greeting them once you are close. Keep chat short and friendly."""
 
@@ -121,7 +123,42 @@ class Agent:
                 return det, phrase
         return None, target
 
-    def approach(self, target: str, hint: tuple[float, float] | None = None, max_steps: int = 12) -> bool:
+    def aim(self, target: str, hint: tuple[float, float] | None, tries: int = 2):
+        """Put the target under the screen-centre crosshair (desktop interaction ray)."""
+        det = None
+        for _ in range(tries):
+            frame = self.cam.grab()
+            det, target = self.ground(frame, target, hint)
+            if det is None:
+                return None
+            b = bearing_deg(det, self.steer_params.fov_v_deg)
+            e = elevation_deg(det, self.steer_params.fov_v_deg)
+            self.log(frame, {"phase": "aim", "target": target, "box": [det.x1, det.y1, det.x2, det.y2],
+                             "bearing": round(b, 1), "elevation": round(e, 1)})
+            if abs(b) < 2.0 and abs(e) < 2.0:
+                break
+            self.body.turn_by(b)
+            self.body.look_by(e)
+            hint = (500.0, 500.0)
+            time.sleep(0.2)
+        return det
+
+    def grab(self, target: str, hint: tuple[float, float] | None) -> None:
+        # Small objects never fill half the view; ~22% of the frame height is within reach
+        # (cafe menu picked up at 27%, 10-28).
+        if not self.approach(target, hint=hint, arrive_height=0.22):
+            return
+        det = self.aim(target, hint=(500.0, 500.0))
+        if det is None:
+            self.memory.add(f"lost {target!r} while aiming")
+        else:
+            self.body.interact()
+            self.memory.add(f"pressed grab on {target!r} (check the hand and the HUD 'Drop' prompt)")
+        time.sleep(0.5)
+        self.body.level()
+
+    def approach(self, target: str, hint: tuple[float, float] | None = None, max_steps: int = 12,
+                 arrive_height: float | None = None) -> bool:
         """Closed loop on SAM boxes until the target fills enough of the view."""
         bearings: list[float] = []
         for i in range(max_steps):
@@ -135,7 +172,7 @@ class Agent:
             # Follow the box we chose, and the phrase that found it.
             hint = (1000 * det.center[0] / det.frame_w, 1000 * det.center[1] / det.frame_h)
             target = phrase
-            cmd = steer(det, self.steer_params)
+            cmd = steer(det, self.steer_params, arrive_height)
             bearings.append(cmd.bearing_deg)
             if len(bearings) >= 4 and max(bearings[-4:]) - min(bearings[-4:]) < 1.0 and not cmd.arrived:
                 # Three moves and the target has not shifted in view: the body is not moving.
@@ -181,11 +218,7 @@ class Agent:
             self.body.gesture(str(d["gesture"]))
             self.memory.add(f"right hand now shows {d['gesture']}")
         elif intent == "grab" and d.get("target"):
-            if self.approach(str(d["target"]), hint=parse_xy(d.get("target_xy"))):
-                # Desktop interaction targets the screen-centre crosshair; approach() leaves
-                # the target centred in yaw. Pitch aiming is not calibrated yet.
-                self.body.interact()
-                self.memory.add(f"tried to pick up {d['target']} (check the hand)")
+            self.grab(str(d["target"]), parse_xy(d.get("target_xy")))
         elif intent == "drop":
             self.body.drop()
             self.memory.add("dropped what was in the right hand")

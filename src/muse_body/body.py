@@ -77,10 +77,22 @@ class PadLocomotion:
     walk_stick = 0.6  # ~2.2 m/s: slow enough to stop near a person
     warmup_seconds = 3.0
 
+    # Pitch (right stick y, positive up) has a smaller dead zone. Measured 10-28 by
+    # tracking a SAM box: 0.3 -> 4 deg/s, 0.4 -> 44, 0.5 -> 79, 0.6 -> 106, then it
+    # flattens (0.8 -> ~185, 1.0 -> ~200). Kept to the linear part.
+    pitch_dead = 0.28
+    pitch_slope = 340.0
+    max_pitch_rate = 100.0
+
     def turn_stick(self, rate: float) -> float:
         if rate == 0:
             return 0.0
         return math.copysign(self.turn_dead + abs(rate) / self.turn_slope, rate)
+
+    def pitch_stick(self, rate: float) -> float:
+        if rate == 0:
+            return 0.0
+        return math.copysign(self.pitch_dead + abs(rate) / self.pitch_slope, rate)
 
     def __init__(self, dry_run: bool = False):
         self.dry_run = dry_run
@@ -149,6 +161,7 @@ class Body:
     def __init__(self, host: str = "127.0.0.1", port: int = 9000, dry_run: bool = False, locomotion: str = "pad"):
         self.osc = OscOut(host, port, dry_run=dry_run)
         self.loco = PadLocomotion(dry_run) if locomotion == "pad" else OscLocomotion(self.osc)
+        self.pitch_deg = 0.0  # net look_by since start, for level()
 
     def axes(self, forward: float = 0.0, strafe: float = 0.0, turn: float = 0.0, pitch: float = 0.0) -> None:
         """Hold the movement and look axes (each -1..1) until the next call."""
@@ -174,6 +187,20 @@ class Body:
         self.axes(turn=self.loco.turn_stick(math.copysign(rate, degrees)))
         time.sleep(abs(degrees) / rate)
         self.stop()
+
+    def look_by(self, degrees: float, min_rate: float = 40.0, max_seconds: float = 0.4) -> None:
+        """Pitch the view by about this many degrees (positive is up), open loop. Pad only."""
+        if abs(degrees) < 0.5 or not isinstance(self.loco, PadLocomotion):
+            return
+        rate = min(self.loco.max_pitch_rate, max(min_rate, abs(degrees) / max_seconds))
+        self.axes(pitch=self.loco.pitch_stick(math.copysign(rate, degrees)))
+        time.sleep(abs(degrees) / rate)
+        self.stop()
+        self.pitch_deg += degrees
+
+    def level(self) -> None:
+        """Undo the pitch this body applied, back to the view it started with."""
+        self.look_by(-self.pitch_deg)
 
     def walk(self, seconds: float = 0.6) -> None:
         self.axes(forward=self.loco.walk_stick)

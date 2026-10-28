@@ -40,11 +40,19 @@ def bearing_deg(det: Detection, fov_v_deg: float) -> float:
     return math.degrees(math.atan((cx - half_w) / half_w * tan_half_h))
 
 
-def steer(det: Detection, p: SteerParams = SteerParams()) -> Command:
+def elevation_deg(det: Detection, fov_v_deg: float) -> float:
+    """Vertical angle from view centre to the box centre; positive is up."""
+    _, cy = det.center
+    half_h = det.frame_h / 2
+    return math.degrees(math.atan((half_h - cy) / half_h * math.tan(math.radians(fov_v_deg) / 2)))
+
+
+def steer(det: Detection, p: SteerParams = SteerParams(), arrive_height: float | None = None) -> Command:
     b = bearing_deg(det, p.fov_v_deg)
     turn = b * p.turn_fraction if abs(b) > p.turn_deadband_deg else 0.0
     at_bottom = det.y2 >= det.frame_h - 2
-    if det.height_frac >= p.arrive_height or (at_bottom and det.height_frac >= p.arrive_height_at_edge):
+    arrive = p.arrive_height if arrive_height is None else arrive_height
+    if det.height_frac >= arrive or (at_bottom and det.height_frac >= p.arrive_height_at_edge):
         return Command(False, turn if abs(b) > p.walk_cone_deg else 0.0, b, True)
     return Command(abs(b) <= p.walk_cone_deg, turn, b, False)
 
