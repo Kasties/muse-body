@@ -14,6 +14,7 @@ from .body import Body
 from .capture import Camera
 from .config import Settings
 from .meta_api import MetaClient, extract_json
+from .senses import Senses
 from .steer import SteerParams, pick, steer
 
 SYSTEM = """You are the mind of an avatar in VRChat. You see one first-person frame at a time.
@@ -63,16 +64,23 @@ class Memory:
         self.events.append(text)
         del self.events[: -self.limit]
 
-    def prompt(self, goal: str) -> str:
+    def prompt(self, goal: str, body: str | None = None) -> str:
         recent = "\n".join(f"- {e}" for e in self.events) or "- (nothing yet)"
-        return f"Goal: {goal}\nRecent:\n{recent}\nWhat next?"
+        body_line = f"Body: {body}\n" if body else ""
+        return f"Goal: {goal}\n{body_line}Recent:\n{recent}\nWhat next?"
 
 
 class Agent:
-    def __init__(self, settings: Settings, goal: str, dry_run: bool = False, log_dir: Path | None = None):
+    def __init__(self, settings: Settings, goal: str, dry_run: bool = False, log_dir: Path | None = None,
+                 locomotion: str = "pad"):
         self.api = MetaClient(settings)
         self.cam = Camera()
-        self.body = Body(settings.osc_host, settings.osc_port, dry_run=dry_run)
+        self.body = Body(settings.osc_host, settings.osc_port, dry_run=dry_run, locomotion=locomotion)
+        try:
+            self.senses: Senses | None = Senses(settings.osc_host, settings.osc_in_port).start()
+        except OSError as e:  # port taken by another OSC app
+            print(f"[senses] OSC output not available on {settings.osc_in_port}: {e}")
+            self.senses = None
         self.steer_params = SteerParams(fov_v_deg=settings.fov_v_deg)
         self.goal = goal
         self.memory = Memory()
@@ -89,7 +97,12 @@ class Agent:
             f.write(json.dumps({"step": self.step, "t": time.time(), **record}) + "\n")
 
     def decide(self, frame: Image.Image) -> dict:
-        reply = self.api.see(frame, SYSTEM, self.memory.prompt(self.goal))
+        body = None
+        if self.senses:
+            for event in self.senses.take_events():
+                self.memory.add(f"felt: {event}")
+            body = self.senses.summary()
+        reply = self.api.see(frame, SYSTEM, self.memory.prompt(self.goal, body))
         try:
             return extract_json(reply)
         except ValueError:
@@ -165,7 +178,9 @@ class Agent:
             for _ in range(steps):
                 self.tick()
         finally:
-            self.body.stop()
+            self.body.close()
+            if self.senses:
+                self.senses.close()
             self.api.close()
 
 
@@ -173,10 +188,13 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Run the Muse body agent against a VRChat desktop window.")
     ap.add_argument("--goal", default="Find someone nearby, walk up to them and greet them.")
     ap.add_argument("--steps", type=int, default=20)
-    ap.add_argument("--dry-run", action="store_true", help="print OSC messages instead of sending them")
+    ap.add_argument("--dry-run", action="store_true", help="print controller/OSC output instead of sending it")
+    ap.add_argument("--input", choices=["pad", "osc"], default="pad",
+                    help="locomotion via a virtual Xbox pad (default) or VRChat's OSC /input axes")
     ap.add_argument("--log-dir", type=Path, default=Path("runs") / time.strftime("%Y%m%d-%H%M%S"))
     args = ap.parse_args()
-    Agent(Settings.from_env(), args.goal, dry_run=args.dry_run, log_dir=args.log_dir).run(args.steps)
+    Agent(Settings.from_env(), args.goal, dry_run=args.dry_run, log_dir=args.log_dir,
+          locomotion=args.input).run(args.steps)
 
 
 if __name__ == "__main__":

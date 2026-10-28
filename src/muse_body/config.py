@@ -27,6 +27,8 @@ class Settings:
     sam_model: str = "sam-3.1"
     osc_host: str = "127.0.0.1"
     osc_port: int = 9000
+    # VRChat's outgoing OSC (avatar parameters), read as body senses.
+    osc_in_port: int = 9001
     # VRChat desktop camera: vertical field of view in degrees.
     fov_v_deg: float = 70.0
 
@@ -43,4 +45,5 @@ class Settings:
             sam_model=os.environ.get("MUSE_SAM_MODEL", cls.sam_model),
             osc_host=os.environ.get("VRCHAT_OSC_HOST", cls.osc_host),
             osc_port=int(os.environ.get("VRCHAT_OSC_PORT", cls.osc_port)),
+            osc_in_port=int(os.environ.get("VRCHAT_OSC_IN_PORT", cls.osc_in_port)),
         )

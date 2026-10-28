@@ -9,6 +9,8 @@ dependencies = [
     "numpy>=1.24",
     "pillow>=10.0",
     "python-osc>=1.8",
+    # Needs the ViGEmBus driver; install with VGAMEPAD_SKIP_VIGEMBUS_INSTALL=true to skip its bundled installer.
+    "vgamepad==0.2.0; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]
