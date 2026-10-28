@@ -1,0 +1,30 @@
+[project]
+name = "muse-body"
+version = "0.1.0"
+description = "An embodied VRChat agent that sees with Muse Spark, grounds with SAM 3.1 and moves over OSC."
+requires-python = ">=3.10"
+dependencies = [
+    "httpx>=0.27",
+    "mss>=9.0",
+    "numpy>=1.24",
+    "pillow>=10.0",
+    "python-osc>=1.8",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+muse-body = "muse_body.agent:main"
+muse-probe = "muse_body.probe:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
