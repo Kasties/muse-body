@@ -41,6 +41,8 @@ also tracks them with a generic person detector, so they can be followed while t
 "follow" walks with a person who is moving around, stays close and keeps facing them.
 With "approach" or "follow" you may also fill "say" and "gesture": they happen the moment you
 are close, so you greet people before they walk off.
+You cannot climb stairs: pick people on your own floor, not on balconies or upper levels.
+"look_around" turns until someone comes into view (fast), so use it whenever nobody suitable is visible.
 Ignore mirror reflections, menus, thumbnails and HUD overlays: they cannot be walked to.
 "gesture" shows a hand sign with your right hand (it stays until you pick another; "neutral" relaxes it).
 "grab" walks to a small loose object and picks it up with the right hand; "drop" lets go.
@@ -292,6 +294,27 @@ class Agent:
             return turn
         return 60.0
 
+    def scan(self, step_deg: float = 45.0) -> None:
+        """Turn in steps, running only the people detector (~1 s) at each, and stop as
+        soon as someone is in view; the next decision then sees them. A VLM decision per
+        60 degree turn took ~5 s each (10-28)."""
+        first = self.search_turn()
+        direction = math.copysign(1.0, first)
+        turned = 0.0
+        turns = [first] + [direction * step_deg] * int((360 - abs(first)) // step_deg)
+        for turn in turns:
+            self.body.turn_by(turn)
+            turned += turn
+            time.sleep(0.15)
+            frame = self.cam.grab()
+            people = [p for p in self.find_people(frame) if (p.conf or 0) >= 0.5]
+            self.log(frame, {"phase": "scan", "turned": round(turned), "people": [[p.x1, p.y1, p.x2, p.y2] for p in people]})
+            if people:
+                self.memory.add(f"scanned {abs(turned):.0f} degrees {'right' if turned > 0 else 'left'} "
+                                f"and now see {len(people)} person(s)")
+                return
+        self.memory.add("scanned a full circle and saw nobody")
+
     def greet(self, d: dict) -> None:
         """Say and gesture what the decision planned for arrival."""
         if d.get("say"):
@@ -321,9 +344,7 @@ class Agent:
                           follow_seconds=self.follow_seconds if intent == "follow" else 0.0,
                           on_arrive=lambda: self.greet(d))
         elif intent == "look_around":
-            turn = self.search_turn()
-            self.body.turn_by(turn)
-            self.memory.add(f"turned {abs(turn):.0f} degrees {'right' if turn > 0 else 'left'} to look around")
+            self.scan()
         elif intent == "wave":
             if d.get("say"):
                 self.body.say(str(d["say"]))
