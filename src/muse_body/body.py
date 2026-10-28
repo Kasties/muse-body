@@ -8,6 +8,7 @@ The older OSC /input axes remain as a fallback locomotion backend (--input osc).
 
 from __future__ import annotations
 
+import math
 import time
 
 from pythonosc.udp_client import SimpleUDPClient
@@ -32,8 +33,15 @@ class OscOut:
 class OscLocomotion:
     """VRChat's /input/* axes. No vertical look over OSC in desktop mode."""
 
+    # Live 10-28: LookHorizontal -1 for 0.3 s turned ~68 deg; assumed linear below that.
+    max_turn_rate = 225.0
+    walk_stick = 1.0
+
     def __init__(self, osc: OscOut):
         self.osc = osc
+
+    def turn_stick(self, rate: float) -> float:
+        return rate / self.max_turn_rate
 
     def set(self, forward: float, strafe: float, turn: float, pitch: float) -> None:
         self.osc.send("/input/Vertical", _clamp(forward))
@@ -51,7 +59,23 @@ class OscLocomotion:
 
 
 class PadLocomotion:
-    """A virtual Xbox 360 pad. Left stick moves, right stick looks."""
+    """A virtual Xbox 360 pad. Left stick moves, right stick looks.
+
+    VRChat desktop has a wide stick dead zone. Measured twice 10-28 via OSC AngularY and
+    VelocityMagnitude: right stick x <= 0.55 does not turn, 0.6 -> 32-46 deg/s,
+    0.7 -> 120-136, 0.8 -> 160-192, 0.9 and 1.0 -> 200 (second run) to 255 (first).
+    Left stick y 0.3 -> 0.1 m/s, 0.45 -> 1.1, 0.6 -> 2.2, 0.8 -> 3.5, 1.0 -> 4.0 (run).
+    """
+
+    turn_dead = 0.55
+    turn_slope = 700.0  # deg/s per stick unit above the dead zone
+    max_turn_rate = 200.0
+    walk_stick = 0.6  # ~2.2 m/s: slow enough to stop near a person
+
+    def turn_stick(self, rate: float) -> float:
+        if rate == 0:
+            return 0.0
+        return math.copysign(self.turn_dead + abs(rate) / self.turn_slope, rate)
 
     def __init__(self, dry_run: bool = False):
         self.dry_run = dry_run
@@ -120,6 +144,24 @@ class Body:
 
     def pulse(self, forward: float = 0.0, turn: float = 0.0, pitch: float = 0.0, seconds: float = 0.3) -> None:
         self.axes(forward=forward, turn=turn, pitch=pitch)
+        time.sleep(seconds)
+        self.stop()
+
+    def turn_by(self, degrees: float, min_rate: float = 60.0, max_seconds: float = 0.4) -> None:
+        """Turn the body by about this many degrees (positive is right), open loop.
+
+        Rate is chosen so the turn takes at most max_seconds; small turns run at
+        min_rate, where the stick response is still reliable.
+        """
+        if abs(degrees) < 0.5:
+            return
+        rate = min(self.loco.max_turn_rate, max(min_rate, abs(degrees) / max_seconds))
+        self.axes(turn=self.loco.turn_stick(math.copysign(rate, degrees)))
+        time.sleep(abs(degrees) / rate)
+        self.stop()
+
+    def walk(self, seconds: float = 0.6) -> None:
+        self.axes(forward=self.loco.walk_stick)
         time.sleep(seconds)
         self.stop()
 

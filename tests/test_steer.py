@@ -11,13 +11,13 @@ def box(x1, y1, x2, y2, conf=None):
 def test_centered_far_target_walks():
     cmd = steer(box(600, 300, 680, 420))
     assert abs(cmd.bearing_deg) < 1
-    assert cmd.forward == 1.0 and not cmd.arrived
+    assert cmd.walk and cmd.turn_deg == 0.0 and not cmd.arrived
 
 
 def test_off_axis_target_turns_only():
     cmd = steer(box(1100, 300, 1200, 420))
     assert cmd.bearing_deg > 12
-    assert cmd.forward == 0.0 and cmd.turn > 0
+    assert not cmd.walk and cmd.turn_deg == cmd.bearing_deg * 0.9
 
 
 def test_left_is_negative():
@@ -26,7 +26,7 @@ def test_left_is_negative():
 
 def test_big_centered_target_arrived():
     cmd = steer(box(500, 100, 780, 600))
-    assert cmd.arrived and cmd.forward == 0.0 and cmd.turn == 0.0
+    assert cmd.arrived and not cmd.walk and cmd.turn_deg == 0.0
 
 
 def test_short_target_touching_bottom_arrived():

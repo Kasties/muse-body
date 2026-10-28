@@ -141,11 +141,13 @@ class Agent:
                 return False
             self.log(frame, {"phase": "approach", "target": target, "box": [det.x1, det.y1, det.x2, det.y2],
                              "conf": det.conf, "bearing": round(cmd.bearing_deg, 1), "arrived": cmd.arrived})
-            if cmd.arrived and cmd.turn == 0.0:
+            if cmd.arrived and cmd.turn_deg == 0.0:
                 self.body.stop()
                 self.memory.add(f"reached {target}")
                 return True
-            self.body.pulse(forward=cmd.forward, turn=cmd.turn, seconds=0.6 if cmd.forward else 0.3)
+            self.body.turn_by(cmd.turn_deg)
+            if cmd.walk:
+                self.body.walk(0.6)
         self.memory.add(f"gave up approaching {target}")
         return False
 
@@ -159,8 +161,8 @@ class Agent:
         if intent == "approach" and d.get("target"):
             self.approach(str(d["target"]), hint=parse_xy(d.get("target_xy")))
         elif intent == "look_around":
-            self.body.pulse(turn=0.6, seconds=0.5)
-            self.memory.add("turned to look around")
+            self.body.turn_by(60.0)
+            self.memory.add("turned 60 degrees right to look around")
         elif intent == "wave":
             if d.get("say"):
                 self.body.say(str(d["say"]))

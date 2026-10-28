@@ -47,7 +47,7 @@ def main() -> None:
             print(f"{mark} id={d.obj_id} box=({d.x1},{d.y1})-({d.x2},{d.y2}) conf={d.conf}")
         if chosen:
             cmd = steer(chosen, SteerParams())
-            print(f"steer: bearing={cmd.bearing_deg:.1f} deg forward={cmd.forward} turn={cmd.turn:.2f} arrived={cmd.arrived}")
+            print(f"steer: bearing={cmd.bearing_deg:.1f} deg turn={cmd.turn_deg:.1f} deg walk={cmd.walk} arrived={cmd.arrived}")
     finally:
         api.close()
 
