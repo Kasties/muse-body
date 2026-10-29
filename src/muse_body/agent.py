@@ -117,6 +117,7 @@ class Agent:
         self.frame_no = 0
         if log_dir:
             log_dir.mkdir(parents=True, exist_ok=True)
+            (log_dir / "run.json").write_text(json.dumps({"goal": goal, "start": time.time()}), encoding="utf-8")
 
     def log(self, frame: Image.Image, record: dict) -> None:
         """Every frame the agent acted on, with what it decided or tracked (for replay videos)."""
@@ -127,6 +128,13 @@ class Agent:
         frame.save(self.log_dir / name, quality=80)
         with open(self.log_dir / "events.jsonl", "a", encoding="utf-8") as f:
             f.write(json.dumps({"step": self.step, "frame": name, "t": time.time(), **record}) + "\n")
+
+    def act(self, text: str) -> None:
+        """Remember an action and log it (no frame) for the replay."""
+        self.memory.add(text)
+        if self.log_dir:
+            with open(self.log_dir / "events.jsonl", "a", encoding="utf-8") as f:
+                f.write(json.dumps({"step": self.step, "t": time.time(), "phase": "act", "act": text}) + "\n")
 
     def decide(self, frame: Image.Image) -> dict:
         body = None
@@ -206,7 +214,7 @@ class Agent:
             self.memory.add(f"lost {target!r} while aiming")
         else:
             self.body.interact()
-            self.memory.add(f"pressed grab on {target!r} (check the hand and the HUD 'Drop' prompt)")
+            self.act(f"pressed grab on {target!r} (check the hand and the HUD 'Drop' prompt)")
         time.sleep(0.5)
         self.body.level()
 
@@ -319,10 +327,10 @@ class Agent:
         """Say and gesture what the decision planned for arrival."""
         if d.get("say"):
             self.body.say(str(d["say"]))
-            self.memory.add(f"said {d['say']!r}")
+            self.act(f"said {d['say']!r}")
         if d.get("gesture") in GESTURES:
             self.body.gesture(str(d["gesture"]))
-            self.memory.add(f"right hand now shows {d['gesture']}")
+            self.act(f"right hand now shows {d['gesture']}")
 
     def tick(self) -> None:
         self.step += 1
@@ -349,21 +357,21 @@ class Agent:
             if d.get("say"):
                 self.body.say(str(d["say"]))
             self.body.emote(1)
-            self.memory.add(f"waved{' and said ' + repr(d['say']) if d.get('say') else ''}")
+            self.act(f"waved{' and said ' + repr(d['say']) if d.get('say') else ''}")
         elif intent == "say" and d.get("say"):
             self.body.say(str(d["say"]))
-            self.memory.add(f"said {d['say']!r}")
+            self.act(f"said {d['say']!r}")
         elif intent == "gesture" and d.get("gesture") in GESTURES:
             self.body.gesture(str(d["gesture"]))
-            self.memory.add(f"right hand now shows {d['gesture']}")
+            self.act(f"right hand now shows {d['gesture']}")
         elif intent == "grab" and d.get("target"):
             self.grab(str(d["target"]), hint)
         elif intent == "drop":
             self.body.drop()
-            self.memory.add("dropped what was in the right hand")
+            self.act("dropped what was in the right hand")
         elif intent == "crouch":
             self.body.crouch_toggle()
-            self.memory.add("toggled crouch")
+            self.act("toggled crouch")
         else:
             self.memory.add("waited")
             time.sleep(1.0)

@@ -28,7 +28,15 @@ muse-body --dry-run --steps 5               # real models, OSC printed instead o
 muse-body --goal "Walk up to someone and say hello"
 ```
 
-Each run writes frames and `events.jsonl` to `runs/<timestamp>/`.
+Each run writes its frames, `events.jsonl` and `run.json` to `runs/<timestamp>/`. To turn a run into
+a 1080p replay with the SAM boxes, people boxes, Muse Spark's pointing hint, its observation and
+reasoning, and the actions it took drawn in:
+
+```
+pip install -e ".[replay]"
+muse-replay runs/<timestamp>                # writes runs/<timestamp>/replay.mp4
+muse-replay runs/<timestamp> --still 12     # one frame as a PNG, for checking
+```
 
 ## Layout
 
@@ -40,6 +48,7 @@ Each run writes frames and `events.jsonl` to `runs/<timestamp>/`.
 | `src/muse_body/body.py` | VRChat OSC: axes, jump, chatbox, emotes |
 | `src/muse_body/capture.py` | VRChat window capture |
 | `src/muse_body/agent.py` | The decide → ground → move loop with a short memory |
+| `src/muse_body/replay.py` | Run log → annotated replay video |
 
 ## License
 

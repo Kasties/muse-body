@@ -15,10 +15,12 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+replay = ["imageio-ffmpeg>=0.5"]
 
 [project.scripts]
 muse-body = "muse_body.agent:main"
 muse-probe = "muse_body.probe:main"
+muse-replay = "muse_body.replay:main"
 
 [build-system]
 requires = ["setuptools>=68"]
