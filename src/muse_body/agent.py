@@ -39,8 +39,9 @@ with its usual noun ("black clipboard"), not what it stands on ("menu stand").
 "target_is_person" is true for any avatar or character, even far away or stylised; the body then
 also tracks them with a generic person detector, so they can be followed while they walk.
 "follow" walks with a person who is moving around, stays close and keeps facing them.
-With "approach" or "follow" you may also fill "say" and "gesture": they happen the moment you
-are close, so you greet people before they walk off.
+With "approach" or "follow" you may also fill "say" and "gesture": with approach they happen the
+moment you are close, with follow at the end of following while you are still next to them. If the
+goal asks you to greet someone, ALWAYS fill both in the approach or follow decision.
 You cannot climb stairs: pick people on your own floor, not on balconies or upper levels.
 "look_around" turns until someone comes into view (fast), so use it whenever nobody suitable is visible.
 Ignore mirror reflections, menus, thumbnails and HUD overlays: they cannot be walked to.
@@ -172,11 +173,13 @@ class Agent:
     def ground(self, frame: Image.Image, target: str, hint: tuple[float, float] | None,
                person: bool = False):
         """SAM on the phrase, then on shorter tails of it: long phrases lose recall
-        ("green striped dinosaur" found nothing where "green dinosaur" did). For people,
-        then the generic words, which match any avatar and are kept on target by the hint."""
-        phrases = phrase_tails(target)
-        if person and hint is not None:
-            phrases += GENERIC_PERSON
+        ("green striped dinosaur" found nothing where "green dinosaur" did).
+
+        People go the other way round: the generic words first, kept on the right avatar by
+        the hint, then the full description. Tails of a person's description are body parts
+        (10-29: "girl with tail" -> "tail" locked onto a tail tip and a fish decal on the
+        wall, "girl with yellow bow" onto her hair bow)."""
+        phrases = GENERIC_PERSON + [target] if person else phrase_tails(target)
         for phrase in phrases:
             det = pick(self.api.segment(frame, phrase), hint=hint)
             if det is not None:
@@ -274,9 +277,9 @@ class Agent:
                 self.memory.add(f"reached {target}")
                 self.body.stop()
                 self.body.turn_by(cmd.turn_deg)  # face them before greeting
-                if on_arrive:
-                    on_arrive()
                 if not follow_seconds:
+                    if on_arrive:
+                        on_arrive()
                     return True
                 continue
             self.body.turn_by(cmd.turn_deg)
@@ -284,6 +287,9 @@ class Agent:
                 self.body.walk(0.6)
         if follow_seconds:
             self.memory.add(f"followed {target} for {time.time() - start:.0f} s")
+            # Still next to them: greet now, at the end of following.
+            if reached and on_arrive:
+                on_arrive()
             return reached
         self.memory.add(f"gave up approaching {target}")
         return False
@@ -346,8 +352,8 @@ class Agent:
         if person:
             hint = self.snap_to_person(hint)
         if intent in ("approach", "follow") and d.get("target"):
-            # Greet as soon as the person is reached, inside the tracking loop, not a
-            # decision later (10-28: the NPC had walked out of view by then).
+            # Greet inside the tracking loop (on arrival, or at the end of following),
+            # not a decision later (10-28: the NPC had walked out of view by then).
             self.approach(str(d["target"]), hint=hint, person=person,
                           follow_seconds=self.follow_seconds if intent == "follow" else 0.0,
                           on_arrive=lambda: self.greet(d))
