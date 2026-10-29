@@ -53,7 +53,8 @@ def steer(det: Detection, p: SteerParams = SteerParams(), arrive_height: float |
     at_bottom = det.y2 >= det.frame_h - 2
     arrive = p.arrive_height if arrive_height is None else arrive_height
     if det.height_frac >= arrive or (at_bottom and det.height_frac >= p.arrive_height_at_edge):
-        return Command(False, turn if abs(b) > p.walk_cone_deg else 0.0, b, True)
+        # Close up, keep facing them (10-29: a person stayed 11 deg off-centre for 12 frames).
+        return Command(False, turn, b, True)
     return Command(abs(b) <= p.walk_cone_deg, turn, b, False)
 
 

@@ -358,6 +358,9 @@ class Agent:
                 self.body.say(str(d["say"]))
             self.body.emote(1)
             self.act(f"waved{' and said ' + repr(d['say']) if d.get('say') else ''}")
+            if d.get("gesture") in GESTURES:
+                self.body.gesture(str(d["gesture"]))
+                self.act(f"right hand now shows {d['gesture']}")
         elif intent == "say" and d.get("say"):
             self.body.say(str(d["say"]))
             self.act(f"said {d['say']!r}")

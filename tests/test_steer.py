@@ -35,6 +35,12 @@ def test_short_target_touching_bottom_arrived():
     assert not steer(box(600, 300, 680, 420)).arrived
 
 
+def test_arrived_off_centre_still_turns():
+    # Live 10-29: person at 64% height, 11 deg right, never re-centred.
+    cmd = steer(box(780, 100, 960, 560))
+    assert cmd.arrived and not cmd.walk and cmd.turn_deg > 3
+
+
 def test_pick_prefers_confident():
     a, b = box(0, 0, 500, 500, conf=0.35), box(0, 0, 50, 50, conf=0.9)
     assert pick([a, b]) is b
