@@ -72,16 +72,22 @@ Set "errand_done" when the errand is finished or given up.
 right hand holds; put what to say while handing it over in "say".
 Prefer approaching people, then greeting them once you are close. Keep chat short and friendly."""
 
+# Naming every box first, and saying where carryable things are, took the café checks from 8 to
+# 12 right out of 12; before, standing menus on the counter were called menu boards (11-02).
 CHECK = """A segmentation model searched one first-person VRChat frame for an object and marked
 each match with a numbered box. Reply with a single JSON object only:
-{"pick": <number of the box around the object itself, or null if no box is>, "why": "<one short reason>"}
-The object is a real, loose thing in the room that you could walk to and pick up. A poster, menu
-board, sign, screen, picture or wall decal that shows or names it is not it, and neither is a
-mirror reflection or a HUD icon."""
+{"boxes": {"1": "<what box 1 holds, 2-5 words>", ...}, "pick": <number of the box around the object itself, or null>, "why": "<one short reason>"}
+The object itself is a thing someone could carry: it stands or lies on a counter, table, shelf or
+the floor, even in a small stand or frame. Pictures of it are not it: posters, menu boards and
+signs on a wall, screens, decals, mirror reflections and HUD icons."""
 
 
 GENERIC_PERSON = ["character", "person"]
 MARK = (255, 0, 200)  # numbered boxes Muse Spark picks from
+# How far (fraction of the frame) an object's box may sit from where it was pointed at or last
+# seen. Live, right picks were within 0.07 of Muse Spark's point and moved at most 0.2 between
+# frames; picking the nearest box anywhere jumped to a wall menu board 0.32 and 0.64 away (11-02).
+OBJECT_NEAR = 0.25
 
 
 def parse_xy(value) -> tuple[float, float] | None:
@@ -219,6 +225,9 @@ class Agent:
         self.own_boxes: list[Detection] = []
         # The phrase SAM found the object with in the last object scan, a fallback for grounding it.
         self.found_phrase: str | None = None
+        # When the last approach arrived: the phrase it tracked the target with, and where the
+        # target is now (0-1000 frame coordinates).
+        self.tracked: tuple[str, tuple[float, float]] | None = None
         self.pool = ThreadPoolExecutor(max_workers=2)
         self.people: list[Detection] = []
         self.follow_seconds = 20.0
@@ -349,7 +358,7 @@ class Agent:
         return (1000 * det.center[0] / det.frame_w, 1000 * det.center[1] / det.frame_h)
 
     def ground(self, frame: Image.Image, target: str, hint: tuple[float, float] | None,
-               person: bool = False):
+               person: bool = False, near: float | None = None):
         """SAM on the phrase, then on shorter tails of it: long phrases lose recall
         ("green striped dinosaur" found nothing where "green dinosaur" did).
 
@@ -358,20 +367,27 @@ class Agent:
         (10-29: "girl with tail" -> "tail" locked onto a tail tip and a fish decal on the
         wall, "girl with yellow bow" onto her hair bow).
 
-        Objects finally try the phrase the last object scan found them with, if it shares a word
-        with the target (11-02: the scan found the menu as "menu", then SAM found nothing for
-        Muse Spark's "black menu stand" or any of its tails)."""
+        With `near`, a box further than that from the hint does not count (see OBJECT_NEAR).
+
+        If none of that finds an object, and the last object scan found one with a phrase that
+        shares a word with the target, SAM proposes with that phrase and Muse Spark picks, as in
+        the scan (11-02: SAM found nothing for Muse Spark's "black menu stand", twice; the
+        scan's own phrase also matched the menu boards on the wall)."""
         phrases = GENERIC_PERSON + [target] if person else phrase_tails(target)
-        if not person and self.found_phrase and set(self.found_phrase.split()) & set(target.split()):
-            phrases = list(dict.fromkeys(phrases + [self.found_phrase]))
         for phrase in phrases:
             dets = self.api.segment(frame, phrase)
             if person:
                 dets = [x for x in dets if not self.is_own(x)]
-            det = pick(dets, hint=hint)
+            det = pick(dets, hint=hint, near=near)
             if det is not None:
                 # Stick with a phrase that worked unless it was a generic fallback.
                 return det, target if phrase in GENERIC_PERSON else phrase
+        if not person and self.found_phrase and set(self.found_phrase.split()) & set(target.split()):
+            det, phrase, check = self.find_object(frame, self.found_phrase)
+            self.log(frame, {"phase": "check", "target": target, **check,
+                             **({"box": [det.x1, det.y1, det.x2, det.y2], "conf": det.conf} if det else {})})
+            if det is not None:
+                return det, phrase
         return None, target
 
     def aim(self, target: str, hint: tuple[float, float] | None, tries: int = 2):
@@ -399,7 +415,12 @@ class Agent:
         # (cafe menu picked up at 27%, 10-28).
         if not self.approach(target, hint=hint, arrive_height=0.22):
             return
-        det = self.aim(target, hint=(500.0, 500.0))
+        # Aim with the phrase that found it on the way, starting where it is now (11-02:
+        # re-grounding Muse Spark's "black menu stand" matched "black stand" on a small black
+        # box 30 degrees off; and the screen centre is nearer a menu further back on the
+        # counter than the one right in front, which sits low in the view).
+        target, start = self.tracked or (target, (500.0, 500.0))
+        det = self.aim(target, hint=start)
         if det is None:
             self.memory.add(f"lost {target!r} while aiming")
         else:
@@ -442,12 +463,14 @@ class Agent:
         seen: list[tuple[float, float]] = []  # (bearing, box height) per frame
         misses = 0
         reached = False
+        self.tracked = None
         start = time.time()
         i = 0
         while i < max_steps or (follow_seconds and time.time() - start < follow_seconds):
             i += 1
             frame = self.cam.grab()
-            det, phrase = self.ground(frame, target, hint, person=person)
+            det, phrase = self.ground(frame, target, hint, person=person,
+                                      near=None if person or hint is None else OBJECT_NEAR)
             if det is None:
                 misses += 1
                 self.log(frame, {"phase": "approach", "target": target, "found": False})
@@ -488,11 +511,12 @@ class Agent:
                 self.memory.add(f"reached {target}")
                 self.body.stop()
                 self.body.turn_by(cmd.turn_deg)  # face them before greeting
+                hint = self.after_turn(det, cmd.turn_deg)
+                self.tracked = (target, hint)
                 if not follow_seconds:
                     if on_arrive:
                         on_arrive()
                     return True
-                hint = self.after_turn(det, cmd.turn_deg)
                 continue
             self.body.turn_by(cmd.turn_deg)
             hint = self.after_turn(det, cmd.turn_deg)
@@ -598,6 +622,8 @@ class Agent:
             n = None
         n = n if n is not None and 1 <= n <= len(cands) else None
         record.update(pick=n, check=str(d.get("why") or ""))
+        if isinstance(d.get("boxes"), dict):  # what Muse Spark took each box for
+            record["labels"] = [str(d["boxes"].get(str(i), "")) for i in range(1, len(cands) + 1)]
         if n is None:
             return None, target, record
         det, phrase = cands[n - 1]

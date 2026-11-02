@@ -56,6 +56,18 @@ def test_pick_hint_beats_confidence():
     assert pick([hud, body], hint=(400, 600)) is body  # nearest when no box contains it
 
 
+def test_pick_near_leaves_out_far_boxes():
+    # Live 11-02 (runs/errand4, step 3): Muse Spark pointed at the counter; the only match
+    # for "restaurant menu" was the menu board on the wall, 0.32 of the frame away.
+    board, hint = box(749, 129, 942, 242), (566, 564)
+    assert pick([board], hint=hint) is board
+    assert pick([board], hint=hint, near=0.25) is None
+    menu = box(690, 380, 740, 440)
+    assert pick([board, menu], hint=hint, near=0.25) is menu
+    big = box(500, 300, 900, 700)  # contains the hint: kept however far its centre is
+    assert pick([big], hint=(400, 450), near=0.01) is big
+
+
 def test_stalled_needs_steady_bearing_and_no_growth():
     # Live 11-02 (runs/errand3, step 3): walking straight at the menu, bearing steady, box growing.
     walking = [(1.5, 0.06), (0.7, 0.07), (1.0, 0.09), (1.4, 0.13)]

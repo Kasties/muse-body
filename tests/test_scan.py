@@ -108,15 +108,51 @@ def test_scan_goes_on_past_pictures(monkeypatch):
                                "(8 pictures or look-alikes ruled out)"]
 
 
-def test_grab_grounds_with_the_phrase_the_scan_found():
-    # errand3 step 2: SAM found nothing for "black menu stand" or any of its tails.
-    a = scanner({"menu": [box(*SCREEN, 0.61), box(*BOARD, 0.84), box(*CLIPBOARD, 0.53)]})
+def test_grab_grounds_with_the_scans_phrase_and_muse_sparks_pick():
+    # errand3 step 2 and errand4 step 3: SAM found nothing for "black menu stand" or its tails,
+    # and the scan's phrase alone also matches the wall boards (sorted by confidence: 1, 2, 3).
+    a = scanner({"menu": [box(*SCREEN, 0.61), box(*BOARD, 0.84), box(*CLIPBOARD, 0.53)]},
+                '{"pick": 3, "why": "on the counter"}')
     frame, hint = Image.new("RGB", (1280, 720)), (859.0, 375.0)
     assert a.ground(frame, "black menu stand", hint) == (None, "black menu stand")
+    assert a.api.asked == []  # no scan phrase yet: Muse Spark is not asked
     a.found_phrase = "menu"
     det, phrase = a.ground(frame, "black menu stand", hint)
     assert (det.x1, det.y1, det.x2, det.y2) == CLIPBOARD and phrase == "menu"
+    assert a.api.asked == [((1280, 720), "Looking for: menu")]
     assert a.ground(frame, "red cup", hint) == (None, "red cup")  # not what the scan found
+
+
+def test_grab_aims_where_the_approach_arrived(monkeypatch):
+    # errand4 step 3: aiming re-grounded "black menu stand" and turned toward a "black stand".
+    monkeypatch.setattr(agent_mod.time, "sleep", lambda s: None)
+    a, aimed = scanner({}), []
+    a.body.level = lambda: None
+
+    def approach(target, **kw):
+        a.tracked = ("restaurant menu", (537.0, 735.0))
+        return True
+
+    a.approach, a.aim = approach, lambda target, hint: aimed.append((target, hint))
+    a.grab("black menu stand", (566.0, 564.0))
+    assert aimed == [("restaurant menu", (537.0, 735.0))]
+
+
+def test_aim_starts_at_the_menu_in_front():
+    # errand4 frame 20, arrived: the menu right in front sits low; another stands further back.
+    front, back = box(627, 402, 749, 657, 0.8), box(384, 374, 424, 490, 0.7)
+    a = scanner({"restaurant menu": [back, front]})
+    hint = a.after_turn(front, 5.3 * 0.9)
+    det, _ = a.ground(Image.new("RGB", (1280, 720)), "restaurant menu", hint)
+    assert det is front
+    det, _ = a.ground(Image.new("RGB", (1280, 720)), "restaurant menu", (500.0, 500.0))
+    assert det is back  # what the screen centre picked
+
+
+def test_check_logs_what_each_box_is():
+    reply = '{"boxes": {"1": "wall menu board", "2": "wall screen", "3": "countertop menu stand"}, "pick": 3}'
+    _, _, record = scanner(FRAME7, reply).find_object(Image.new("RGB", (1280, 720)), "printed menu")
+    assert record["labels"] == ["wall menu board", "wall screen", "countertop menu stand"]
 
 
 def test_numbered_draws_on_a_copy():

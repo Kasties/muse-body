@@ -29,7 +29,8 @@ def test_checked_scan_renders(tmp_path):
     Image.new("RGB", (1280, 720)).save(tmp_path / "00001.jpg")
     scan = {"step": 1, "frame": "00001.jpg", "t": 10.0, "phase": "scan", "turned": 270,
             "target": "printed menu", "candidates": [[1081, 33, 1279, 160], [1104, 272, 1155, 322]],
-            "pick": 2, "check": "the menu on the counter", "box": [1104, 272, 1155, 322], "conf": 0.52}
+            "pick": 2, "check": "the menu on the counter", "box": [1104, 272, 1155, 322], "conf": 0.52,
+            "labels": ["wall menu board", "countertop menu stand"]}
     (tmp_path / "events.jsonl").write_text(json.dumps(scan), encoding="utf-8")
     shots = load(tmp_path)
     assert render(shots[0], "goal", 10.0, Fonts(), []).size == (1920, 1080)

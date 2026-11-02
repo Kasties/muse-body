@@ -90,12 +90,14 @@ def steer(det: Detection, p: SteerParams = SteerParams(), arrive_height: float |
 
 
 def pick(dets: list[Detection], min_conf: float = 0.3,
-         hint: tuple[float, float] | None = None) -> Detection | None:
+         hint: tuple[float, float] | None = None, near: float | None = None) -> Detection | None:
     """Choose one detection.
 
     With a hint (x, y in 0-1000 frame coordinates, from the VLM) the box containing it wins,
     else the box whose centre is nearest. SAM matches a phrase everywhere, including mirror
     reflections, menu thumbnails and HUD previews; the hint says which one the VLM meant.
+    With `near` as well, a box that does not contain the hint must have its centre within that
+    distance of it (as a fraction of the frame), or nothing is picked.
     Without a hint: the most confident, then largest, detection.
     """
     usable = [d for d in dets if d.conf is None or d.conf >= min_conf]
@@ -112,4 +114,6 @@ def pick(dets: list[Detection], min_conf: float = 0.3,
         # Among boxes containing the hint, prefer the tightest one.
         return (not inside, d.area_frac if inside else dist)
 
-    return min(usable, key=score)
+    best = min(usable, key=score)
+    outside, dist = score(best)
+    return None if near is not None and outside and dist > near else best

@@ -51,8 +51,10 @@ walks up and grabs it, turns to find the person again, walks over and hands it t
 
 While turning, SAM 3.1 proposes and Muse Spark picks. SAM matches pictures of the object too:
 "menu" finds the menu boards on a café wall as well as the menu on the counter. So every match
-is numbered on the frame, and Muse Spark says which number is the object itself, or none. The
-turn stops only on the real object and faces it.
+is numbered on the frame, and Muse Spark names what each box holds and says which number is the
+object itself, or none. The turn stops only on the real object and faces it. If Muse Spark's own
+name for the object finds nothing on the way there, the same check runs again with the phrase
+the scan found it with.
 
 ```
 muse-body --goal "Hang around near people and help anyone who asks you for something in chat."

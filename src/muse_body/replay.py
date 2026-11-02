@@ -138,10 +138,11 @@ def render(shot: Shot, goal: str, t0: float, f: Fonts, recent_acts: list[str]) -
     for o in r.get("own") or []:
         _box(d, o, scale, MUTED, 3, "own arm (ignored)", f.small)
     # An object scan's SAM matches, numbered as Muse Spark saw them when it picked one.
-    cands, chosen = r.get("candidates") or [], r.get("pick")
+    cands, chosen, labels = r.get("candidates") or [], r.get("pick"), r.get("labels") or []
     for i, c in enumerate(cands, 1):
         if i != chosen:
-            _box(d, c, scale, MUTED, 3, f"{i} not it", f.small)
+            what = labels[i - 1] if i <= len(labels) else ""
+            _box(d, c, scale, MUTED, 3, f"{i} not it: {what}" if what else f"{i} not it", f.small)
     if r.get("box"):
         conf = f" {r['conf']:.2f}" if r.get("conf") is not None else ""
         number = f"{chosen} · " if cands and chosen else ""
