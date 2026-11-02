@@ -18,7 +18,8 @@ from .config import Settings
 from .meta_api import MetaClient, extract_json
 from .sam_format import Detection
 from .senses import Senses
-from .steer import SteerParams, bearing_deg, elevation_deg, pick, steer
+from .steer import (SteerParams, bearing_deg, covered, elevation_deg, iou, pick, screen_x, steer,
+                    x_bearing)
 
 SYSTEM = """You are the mind of an avatar in VRChat. You see one first-person frame at a time.
 Choose ONE next intention. Reply with a single JSON object only:
@@ -59,7 +60,8 @@ While you hold something, the HUD on the right shows a "Drop (B)" prompt; a prom
 RT icon and a name means your crosshair is on something you can grab or use.
 "crouch" toggles crouching.
 Other players talk by typing: their words appear in a chat bubble above their head and nameplate.
-Read every bubble you can see. When someone asks you for something, answer in "reply" and take it
+Read every bubble you can see; a bubble stays up for a while after it is written, so answer each
+one once. When someone asks you for something, answer in "reply" and take it
 on as your errand; it is listed under "Errand" until it is done. Work on it over the next
 decisions, starting right away (no need to walk over to them first). To bring someone an object:
 "grab" it if you can see it, else "look_around" with the object as "target"; once you hold it,
@@ -176,8 +178,12 @@ class Agent:
         self.goal = goal
         self.memory = Memory()
         self.errands = Errands()
-        # Seconds the held object is offered before it is dropped at the person's feet.
+        # Seconds the held object is offered before it is let go in front of the person.
         self.handover_seconds = 2.5
+        # While carrying: where the held object and our own reaching arm sit on screen.
+        self.holding = False
+        self.held_box: Detection | None = None
+        self.own_boxes: list[Detection] = []
         self.pool = ThreadPoolExecutor(max_workers=2)
         self.people: list[Detection] = []
         self.follow_seconds = 20.0
@@ -249,10 +255,56 @@ class Agent:
         """Every avatar in view. Descriptive phrases miss stylised avatars ("cat girl",
         "blonde girl" found nothing on 10-28) while "character" found both NPCs."""
         try:
-            return [d for d in self.api.segment(frame, "character") if (d.conf or 0) >= 0.4]
+            return [d for d in self.api.segment(frame, "character")
+                    if (d.conf or 0) >= 0.4 and not self.is_own(d)]
         except Exception as e:  # a failed side sense must not stop the decision
             print(f"[people] {e}")
             return []
+
+    def is_own(self, det: Detection) -> bool:
+        """Part of our own arm, or of the object in our hand: while carrying they stay at the
+        same place on screen (11-02: SAM 'character' matched the avatar's own furry arm, and
+        a cartoon printed on the held menu)."""
+        if not self.holding:
+            return False
+        if any(iou(det, own) >= 0.5 for own in self.own_boxes):
+            return True
+        if self.held_box is not None and covered(det, self.held_box) >= 0.8:
+            return True
+        # The right hand holds it, so our own arm reaches in from the lower right corner.
+        if det.x2 >= det.frame_w - 2 and det.y2 >= det.frame_h - 2 and det.height_frac >= 0.5:
+            self.own_boxes.append(det)
+            return True
+        return False
+
+    def note_held(self, target: str) -> None:
+        """Right after a grab, find where the held object sits on screen."""
+        self.holding, self.own_boxes = True, []
+        frame = self.cam.grab()
+        self.held_box = None
+        for phrase in dict.fromkeys([target, target.split()[-1]]):
+            self.held_box = pick([x for x in self.api.segment(frame, phrase) if (x.conf or 0) >= 0.5],
+                                 hint=(500.0, 500.0))
+            if self.held_box is not None:
+                break
+        h = self.held_box
+        self.log(frame, {"phase": "holding", "target": target,
+                         **({"box": [h.x1, h.y1, h.x2, h.y2]} if h else {})})
+
+    def let_go(self) -> None:
+        self.body.drop()
+        self.holding, self.held_box, self.own_boxes = False, None, []
+
+    def beside_held_deg(self) -> float:
+        """Bearing that keeps a person just left of what we carry: the object floats in the
+        middle of the view and the right arm holding it fills the right side."""
+        if not self.holding:
+            return 0.0
+        h = self.held_box
+        if h is None:
+            return -25.0
+        x = max(h.x1 - 0.06 * h.frame_w, 0.1 * h.frame_w)
+        return x_bearing(x, self.steer_params.fov_v_deg, h.frame_w, h.frame_h)
 
     def snap_to_person(self, hint: tuple[float, float] | None) -> tuple[float, float] | None:
         """Move the VLM's rough point onto the nearest detected person."""
@@ -272,7 +324,10 @@ class Agent:
         wall, "girl with yellow bow" onto her hair bow)."""
         phrases = GENERIC_PERSON + [target] if person else phrase_tails(target)
         for phrase in phrases:
-            det = pick(self.api.segment(frame, phrase), hint=hint)
+            dets = self.api.segment(frame, phrase)
+            if person:
+                dets = [x for x in dets if not self.is_own(x)]
+            det = pick(dets, hint=hint)
             if det is not None:
                 # Stick with a phrase that worked unless it was a generic fallback.
                 return det, target if phrase in GENERIC_PERSON else phrase
@@ -311,6 +366,8 @@ class Agent:
             self.act(f"pressed grab on {target!r} (check the hand and the HUD 'Drop' prompt)")
         time.sleep(0.5)
         self.body.level()
+        if det is not None:
+            self.note_held(target)
 
     def give(self, target: str, hint: tuple[float, float] | None, d: dict) -> None:
         """Walk to a person and hand over what the right hand holds."""
@@ -318,24 +375,28 @@ class Agent:
             line = str(d.get("say") or "Here you go!")
             self.body.say(line)
             self.act(f"said {line!r}")
-            # They can take it out of the hand meanwhile; otherwise it drops in front of them.
+            # They can take it out of the hand meanwhile; otherwise it is let go in front of them.
             time.sleep(self.handover_seconds)
-            self.body.drop()
+            self.let_go()
             self.act(f"handed what I held to {target}")
             if self.errands.current:
                 self.act(f"errand finished: {self.errands.current['task']}")
                 self.errands.done()
 
-        if not self.approach(target, hint=hint, person=True, on_arrive=hand_over):
+        # Walk up with them beside the held object, not behind it, then face them on arrival
+        # so the object ends up between us (11-02: the menu hid the requester).
+        if not self.approach(target, hint=hint, person=True, on_arrive=hand_over,
+                             offset_deg=self.beside_held_deg()):
             self.memory.add(f"did not reach {target} to hand it over (still holding it)")
 
     def approach(self, target: str, hint: tuple[float, float] | None = None, max_steps: int = 12,
                  arrive_height: float | None = None, person: bool = False, follow_seconds: float = 0.0,
-                 on_arrive=None) -> bool:
+                 on_arrive=None, offset_deg: float = 0.0) -> bool:
         """Closed loop on SAM boxes until the target fills enough of the view.
 
         With follow_seconds, keep going after arriving: stay close to a person who walks
-        around and keep facing them, until the time is up or they are lost.
+        around and keep facing them, until the time is up or they are lost. offset_deg keeps
+        the target at that bearing while walking up (see steer).
         """
         bearings: list[float] = []
         misses = 0
@@ -367,12 +428,15 @@ class Agent:
                 # People: 40% of the frame height is conversation distance; 55% was never
                 # reached on the NPC world (closest 43%) and means bumping into them.
                 arrive_height = 0.40
-            cmd = steer(det, self.steer_params, arrive_height)
+            cmd = steer(det, self.steer_params, arrive_height, offset_deg)
             bearings.append(cmd.bearing_deg)
             self.last_seen = (cmd.bearing_deg, time.time())
             self.log(frame, {"phase": "follow" if follow_seconds else "approach", "target": target,
                              "box": [det.x1, det.y1, det.x2, det.y2], "conf": det.conf,
-                             "bearing": round(cmd.bearing_deg, 1), "arrived": cmd.arrived})
+                             "bearing": round(cmd.bearing_deg, 1), "arrived": cmd.arrived,
+                             **({"offset": round(offset_deg, 1)} if offset_deg else {}),
+                             **({"own": [[o.x1, o.y1, o.x2, o.y2] for o in self.own_boxes]}
+                                if self.own_boxes else {})})
             if (not person and len(bearings) >= 4 and max(bearings[-4:]) - min(bearings[-4:]) < 1.0
                     and not cmd.arrived):
                 # Three moves and the target has not shifted in view: the body is not moving.
@@ -389,8 +453,10 @@ class Agent:
                     if on_arrive:
                         on_arrive()
                     return True
+                hint = self.after_turn(det, cmd.turn_deg)
                 continue
             self.body.turn_by(cmd.turn_deg)
+            hint = self.after_turn(det, cmd.turn_deg)
             if cmd.walk and not cmd.arrived:
                 self.body.walk(0.6)
         if follow_seconds:
@@ -401,6 +467,13 @@ class Agent:
             return reached
         self.memory.add(f"gave up approaching {target}")
         return False
+
+    def after_turn(self, det: Detection, turn: float) -> tuple[float, float]:
+        """Where the tracked box should show (0-1000) once the body turned by `turn` degrees.
+        (11-02: after a 36 degree turn the hint still pointed at the old spot.)"""
+        b = bearing_deg(det, self.steer_params.fov_v_deg) - turn
+        x = screen_x(b, self.steer_params.fov_v_deg, det.frame_w, det.frame_h)
+        return (min(max(1000 * x / det.frame_w, 0.0), 1000.0), 1000 * det.center[1] / det.frame_h)
 
     def describe_last_seen(self) -> str:
         b, t = self.last_seen
@@ -514,7 +587,7 @@ class Agent:
         elif intent == "give" and d.get("target"):
             self.give(str(d["target"]), hint, d)
         elif intent == "drop":
-            self.body.drop()
+            self.let_go()
             self.act("dropped what was in the right hand")
         elif intent == "crouch":
             self.body.crouch_toggle()

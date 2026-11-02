@@ -131,6 +131,8 @@ def render(shot: Shot, goal: str, t0: float, f: Fonts, recent_acts: list[str]) -
 
     for p in r.get("people") or []:
         _box(d, p, scale, PEOPLE, 3, "person", f.small)
+    for o in r.get("own") or []:
+        _box(d, o, scale, MUTED, 3, "own arm (ignored)", f.small)
     if r.get("box"):
         conf = f" {r['conf']:.2f}" if r.get("conf") is not None else ""
         _box(d, r["box"], scale, TARGET, 5, f"SAM 3.1: {r.get('target', '')}{conf}", f.small)
@@ -204,7 +206,8 @@ def render(shot: Shot, goal: str, t0: float, f: Fonts, recent_acts: list[str]) -
     d.text((px, y), "NOW", fill=MUTED, font=f.label)
     y += 30
     now = {"decide": "thinking (Muse Spark)", "follow": "following", "approach": "approaching",
-           "scan": "scanning for people", "aim": "aiming crosshair"}.get(phase, phase)
+           "scan": "scanning", "aim": "aiming crosshair",
+           "holding": "noting what it holds"}.get(phase, phase)
     d.text((px, y), now, fill=TEXT, font=f.body)
     y += 46
     rows = []

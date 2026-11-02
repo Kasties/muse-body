@@ -32,12 +32,39 @@ class Command:
     arrived: bool
 
 
+def x_bearing(x: float, fov_v_deg: float, frame_w: int, frame_h: int) -> float:
+    """Horizontal angle from view centre to frame column x; positive is to the right."""
+    half_w = frame_w / 2
+    tan_half_h = math.tan(math.radians(fov_v_deg) / 2) * frame_w / frame_h
+    return math.degrees(math.atan((x - half_w) / half_w * tan_half_h))
+
+
 def bearing_deg(det: Detection, fov_v_deg: float) -> float:
     """Horizontal angle from view centre to the box centre; positive is to the right."""
-    cx, _ = det.center
-    half_w = det.frame_w / 2
-    tan_half_h = math.tan(math.radians(fov_v_deg) / 2) * det.frame_w / det.frame_h
-    return math.degrees(math.atan((cx - half_w) / half_w * tan_half_h))
+    return x_bearing(det.center[0], fov_v_deg, det.frame_w, det.frame_h)
+
+
+def screen_x(bearing: float, fov_v_deg: float, frame_w: int, frame_h: int) -> float:
+    """Inverse of x_bearing: the frame column at which something at this bearing shows."""
+    half_w = frame_w / 2
+    tan_half_h = math.tan(math.radians(fov_v_deg) / 2) * frame_w / frame_h
+    return half_w + half_w * math.tan(math.radians(bearing)) / tan_half_h
+
+
+def iou(a: Detection, b: Detection) -> float:
+    ix = max(0.0, min(a.x2, b.x2) - max(a.x1, b.x1))
+    iy = max(0.0, min(a.y2, b.y2) - max(a.y1, b.y1))
+    inter = ix * iy
+    union = (a.x2 - a.x1) * (a.y2 - a.y1) + (b.x2 - b.x1) * (b.y2 - b.y1) - inter
+    return inter / union if union > 0 else 0.0
+
+
+def covered(a: Detection, b: Detection) -> float:
+    """How much of a lies inside b (0-1)."""
+    ix = max(0.0, min(a.x2, b.x2) - max(a.x1, b.x1))
+    iy = max(0.0, min(a.y2, b.y2) - max(a.y1, b.y1))
+    area = (a.x2 - a.x1) * (a.y2 - a.y1)
+    return ix * iy / area if area > 0 else 0.0
 
 
 def elevation_deg(det: Detection, fov_v_deg: float) -> float:
@@ -47,15 +74,19 @@ def elevation_deg(det: Detection, fov_v_deg: float) -> float:
     return math.degrees(math.atan((half_h - cy) / half_h * math.tan(math.radians(fov_v_deg) / 2)))
 
 
-def steer(det: Detection, p: SteerParams = SteerParams(), arrive_height: float | None = None) -> Command:
+def steer(det: Detection, p: SteerParams = SteerParams(), arrive_height: float | None = None,
+          offset_deg: float = 0.0) -> Command:
+    """offset_deg keeps the target at that bearing instead of straight ahead while walking up
+    (beside a held object that would hide it); on arrival the body faces the target."""
     b = bearing_deg(det, p.fov_v_deg)
-    turn = b * p.turn_fraction if abs(b) > p.turn_deadband_deg else 0.0
     at_bottom = det.y2 >= det.frame_h - 2
     arrive = p.arrive_height if arrive_height is None else arrive_height
     if det.height_frac >= arrive or (at_bottom and det.height_frac >= p.arrive_height_at_edge):
         # Close up, keep facing them (10-29: a person stayed 11 deg off-centre for 12 frames).
-        return Command(False, turn, b, True)
-    return Command(abs(b) <= p.walk_cone_deg, turn, b, False)
+        return Command(False, b * p.turn_fraction if abs(b) > p.turn_deadband_deg else 0.0, b, True)
+    off = b - offset_deg
+    turn = off * p.turn_fraction if abs(off) > p.turn_deadband_deg else 0.0
+    return Command(abs(off) <= p.walk_cone_deg, turn, b, False)
 
 
 def pick(dets: list[Detection], min_conf: float = 0.3,
