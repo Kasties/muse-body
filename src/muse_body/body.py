@@ -119,7 +119,7 @@ class PadLocomotion:
                 "START": vg.XUSB_BUTTON.XUSB_GAMEPAD_START,
                 "BACK": vg.XUSB_BUTTON.XUSB_GAMEPAD_BACK,
             }
-            self.pad = vg.VX360Gamepad()
+            self.pad = self._connect(vg)
         except Exception as e:  # ViGEmBus missing raises from the client DLL
             raise SystemExit(
                 f"virtual gamepad unavailable ({e}). Install the ViGEmBus driver "
@@ -134,6 +134,18 @@ class PadLocomotion:
         self.sticks(0.0, 0.0, 0.3, 0.0)
         time.sleep(0.3)
         self.sticks(0.0, 0.0, 0.0, 0.0)
+
+    @staticmethod
+    def _connect(vg, tries: int = 3):
+        # 11-02: one start failed with VIGEM_ERROR_TARGET_NOT_PLUGGED_IN while the driver was
+        # running; a new pad seconds later connected fine.
+        for attempt in range(tries):
+            try:
+                return vg.VX360Gamepad()
+            except Exception:
+                if attempt == tries - 1:
+                    raise
+                time.sleep(1.0)
 
     def set(self, forward: float, strafe: float, turn: float, pitch: float) -> None:
         self.sticks(strafe, forward, turn, pitch)

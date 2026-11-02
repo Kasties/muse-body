@@ -163,6 +163,7 @@ class Agent:
     def __init__(self, settings: Settings, goal: str, dry_run: bool = False, log_dir: Path | None = None,
                  locomotion: str = "pad"):
         self.api = MetaClient(settings)
+        self.dry_run = dry_run
         self.cam = Camera()
         self.body = Body(settings.osc_host, settings.osc_port, dry_run=dry_run, locomotion=locomotion)
         try:
@@ -463,10 +464,20 @@ class Agent:
             self.body.gesture(str(d["gesture"]))
             self.act(f"right hand now shows {d['gesture']}")
 
+    def wait_for_focus(self, timeout: float = 120.0) -> None:
+        """VRChat ignores the gamepad while its window is not focused (11-02: the first six
+        steps of a run turned nothing), so wait for focus instead of acting blind."""
+        if self.dry_run or is_foreground() is not False:
+            return
+        print(f"[{self.step}] waiting for the VRChat window to be focused (controller input is ignored)")
+        self.body.stop()
+        deadline = time.time() + timeout
+        while is_foreground() is False and time.time() < deadline:
+            time.sleep(0.5)
+
     def tick(self) -> None:
         self.step += 1
-        if is_foreground() is False:
-            print(f"[{self.step}] warning: VRChat is not the focused window; controller input will be ignored")
+        self.wait_for_focus()
         frame = self.cam.grab()
         d = self.decide(frame)
         self.log(frame, {"phase": "decide", **d})
