@@ -85,19 +85,23 @@ class Shot:
 
 def load(run: Path) -> list[Shot]:
     shots: list[Shot] = []
-    decision, acts = None, []
+    decision, pending = None, []
     for line in (run / "events.jsonl").read_text(encoding="utf-8").splitlines():
         r = json.loads(line)
         if r.get("phase") == "act":
-            acts.append(r["act"])
-            if shots:  # an action happens after the frame that led to it
+            # An action belongs to the frame that led to it. Replies to chat are sent while
+            # the step's decision is made, before its frame is logged: they wait for it.
+            if shots and shots[-1].record.get("step") == r.get("step"):
                 shots[-1].acts.append(r["act"])
+            else:
+                pending.append(r["act"])
             continue
         if r.get("phase") == "decide":
             decision = r
         if not r.get("frame") or not (run / r["frame"]).exists():
             continue
-        shots.append(Shot(run / r["frame"], r["t"], r, decision, []))
+        shots.append(Shot(run / r["frame"], r["t"], r, decision, pending))
+        pending = []
     for a, b in zip(shots, shots[1:]):
         a.duration = b.t - a.t
     if shots:

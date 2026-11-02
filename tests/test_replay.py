@@ -23,3 +23,16 @@ def test_load_attaches_actions_and_decision(tmp_path):
     assert shots[1].decision["intent"] == "follow"
     img = render(shots[1], "goal", shots[0].t, Fonts(), ["said 'hi'"])
     assert img.size == (1920, 1080)
+
+
+def test_reply_logged_before_the_decision_frame_goes_with_it(tmp_path):
+    Image.new("RGB", (1280, 720)).save(tmp_path / "00001.jpg")
+    events = [
+        {"step": 1, "t": 10.0, "phase": "act", "act": "replied 'Sure!'"},
+        {"step": 1, "frame": "00001.jpg", "t": 10.0, "phase": "decide", "heard": "menu please",
+         "errand": {"task": "bring the menu", "for": "plush", "heard": "menu please"}},
+    ]
+    (tmp_path / "events.jsonl").write_text("\n".join(json.dumps(e) for e in events), encoding="utf-8")
+    shots = load(tmp_path)
+    assert shots[0].acts == ["replied 'Sure!'"]
+    assert render(shots[0], "goal", 10.0, Fonts(), shots[0].acts).size == (1920, 1080)
