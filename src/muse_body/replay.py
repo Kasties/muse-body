@@ -226,7 +226,7 @@ def render(shot: Shot, goal: str, t0: float, f: Fonts, recent_acts: list[str]) -
     if r.get("people") is not None:
         rows.append(f"people    {len(r['people']):6d}")
     if r.get("arrived"):
-        rows.append("arrived ✓")
+        rows.append("arrived   yes")
     for row in rows:
         d.text((px, y), row, fill=TEXT, font=f.mono)
         y += 28
