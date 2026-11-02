@@ -115,6 +115,17 @@ class Memory:
         return f"Goal: {goal}\n{errand_line}{body_line}Recent:\n{recent}\nWhat next?"
 
 
+def stalled(seen: list[tuple[float, float]]) -> bool:
+    """Three moves and the target neither shifted nor grew in view: the body is not moving.
+    (11-02: walking straight at a menu kept its bearing within 1 degree while its box grew
+    from 6% to 13% of the frame, and the old bearing-only check gave up.)"""
+    if len(seen) < 4:
+        return False
+    bearings = [b for b, _ in seen[-4:]]
+    first, last = seen[-4][1], seen[-1][1]
+    return max(bearings) - min(bearings) < 1.0 and last < first * 1.1
+
+
 def _key(text: str) -> str:
     return " ".join(text.lower().split())
 
@@ -398,7 +409,7 @@ class Agent:
         around and keep facing them, until the time is up or they are lost. offset_deg keeps
         the target at that bearing while walking up (see steer).
         """
-        bearings: list[float] = []
+        seen: list[tuple[float, float]] = []  # (bearing, box height) per frame
         misses = 0
         reached = False
         start = time.time()
@@ -429,7 +440,7 @@ class Agent:
                 # reached on the NPC world (closest 43%) and means bumping into them.
                 arrive_height = 0.40
             cmd = steer(det, self.steer_params, arrive_height, offset_deg)
-            bearings.append(cmd.bearing_deg)
+            seen.append((cmd.bearing_deg, det.height_frac))
             self.last_seen = (cmd.bearing_deg, time.time())
             self.log(frame, {"phase": "follow" if follow_seconds else "approach", "target": target,
                              "box": [det.x1, det.y1, det.x2, det.y2], "conf": det.conf,
@@ -437,10 +448,8 @@ class Agent:
                              **({"offset": round(offset_deg, 1)} if offset_deg else {}),
                              **({"own": [[o.x1, o.y1, o.x2, o.y2] for o in self.own_boxes]}
                                 if self.own_boxes else {})})
-            if (not person and len(bearings) >= 4 and max(bearings[-4:]) - min(bearings[-4:]) < 1.0
-                    and not cmd.arrived):
-                # Three moves and the target has not shifted in view: the body is not moving.
-                # (Skipped for people: a person walking with us also keeps a steady bearing.)
+            if not person and not cmd.arrived and stalled(seen):
+                # (Skipped for people: a person walking with us also keeps a steady view.)
                 self.memory.add(f"moving toward {target!r} did not change the view (stuck?)")
                 self.body.stop()
                 return False

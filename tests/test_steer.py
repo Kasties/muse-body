@@ -1,4 +1,4 @@
-from muse_body.agent import phrase_tails
+from muse_body.agent import phrase_tails, stalled
 from muse_body.meta_api import extract_json
 from muse_body.sam_format import Detection
 from muse_body.steer import bearing_deg, pick, steer
@@ -54,6 +54,15 @@ def test_pick_hint_beats_confidence():
     assert pick([hud, body]) is hud
     assert pick([hud, body], hint=(510, 560)) is body
     assert pick([hud, body], hint=(400, 600)) is body  # nearest when no box contains it
+
+
+def test_stalled_needs_steady_bearing_and_no_growth():
+    # Live 11-02 (runs/errand3, step 3): walking straight at the menu, bearing steady, box growing.
+    walking = [(1.5, 0.06), (0.7, 0.07), (1.0, 0.09), (1.4, 0.13)]
+    assert not stalled(walking)
+    assert stalled([(1.5, 0.06), (0.7, 0.06), (1.0, 0.06), (1.4, 0.062)])
+    assert not stalled([(1.5, 0.06), (0.7, 0.06), (1.0, 0.06)])  # too few moves
+    assert not stalled([(5.0, 0.06), (0.7, 0.06), (1.0, 0.06), (1.4, 0.06)])  # still turning
 
 
 def test_phrase_tails():
