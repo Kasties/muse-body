@@ -27,7 +27,9 @@ TARGET = (255, 176, 32)
 PEOPLE = (64, 200, 255)
 HINT = (255, 72, 160)
 ACT = (110, 220, 120)
+ERRAND = (255, 210, 90)
 INTENT_COLORS = {
+    "give": ERRAND,
     "look_around": (120, 130, 255), "approach": TARGET, "follow": TARGET, "grab": (255, 120, 80),
     "wave": ACT, "say": ACT, "gesture": ACT, "drop": (255, 120, 80), "crouch": MUTED, "wait": MUTED,
 }
@@ -142,6 +144,14 @@ def render(shot: Shot, goal: str, t0: float, f: Fonts, recent_acts: list[str]) -
     if phase == "approach" and r.get("found") is False:
         d.text((24, 20), "SAM 3.1: target not in view", fill=TARGET, font=f.label,
                stroke_width=3, stroke_fill=BG)
+    if phase == "decide" and dec.get("heard"):
+        # What Muse Spark read in someone's chat bubble, as a caption over the view.
+        lines = wrap(d, f"read in chat: “{dec['heard']}”", f.body, VIEW_W - 240)[:2]
+        tw = max(d.textlength(line, font=f.body) for line in lines)
+        x0 = (VIEW_W - tw) / 2 - 18
+        d.rounded_rectangle([x0, 112, x0 + tw + 36, 124 + 32 * len(lines)], radius=12, fill=(250, 250, 250))
+        for i, line in enumerate(lines):
+            d.text((x0 + 18, 116 + 32 * i), line, fill=BG, font=f.body)
 
     # Right panel: goal, decision, live telemetry.
     px, pw = VIEW_W + 28, W - VIEW_W - 56
@@ -157,6 +167,14 @@ def render(shot: Shot, goal: str, t0: float, f: Fonts, recent_acts: list[str]) -
         d.text((px, y), line, fill=TEXT, font=f.body)
         y += 32
     y += 20
+    errand = dec.get("errand")
+    if errand:
+        d.text((px, y), "ERRAND", fill=MUTED, font=f.label)
+        y += 28
+        for line in wrap(d, f"{errand['task']} (for {errand['for']})", f.body, pw)[:3]:
+            d.text((px, y), line, fill=ERRAND, font=f.body)
+            y += 32
+        y += 20
     d.text((px, y), f"STEP {r.get('step', '?')}", fill=MUTED, font=f.label)
     d.text((px + pw - 110, y), f"t+{shot.t - t0:5.1f} s", fill=MUTED, font=f.mono)
     y += 34
@@ -205,13 +223,13 @@ def render(shot: Shot, goal: str, t0: float, f: Fonts, recent_acts: list[str]) -
 
     # Actions taken (chatbox, gestures, buttons), kept on screen for a few frames.
     if recent_acts:
-        y = max(y + 20, H - 40 - 34 * len(recent_acts) - 30)
+        lines = [line for act in recent_acts for line in wrap(d, act, f.body, pw)[:2]][-6:]
+        y = max(y + 20, H - 30 - 32 * len(lines) - 30)
         d.text((px, y), "DID", fill=MUTED, font=f.label)
         y += 30
-        for act in recent_acts:
-            for line in wrap(d, act, f.body, pw)[:2]:
-                d.text((px, y), line, fill=ACT, font=f.body)
-                y += 32
+        for line in lines:
+            d.text((px, y), line, fill=ACT, font=f.body)
+            y += 32
 
     # Bottom strip: what Muse Spark saw and why it chose this.
     d.rectangle([0, VIEW_H, VIEW_W, H], fill=BG)

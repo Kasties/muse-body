@@ -24,12 +24,17 @@ SYSTEM = """You are the mind of an avatar in VRChat. You see one first-person fr
 Choose ONE next intention. Reply with a single JSON object only:
 {
   "observation": "<one sentence: what you see>",
-  "intent": "approach" | "follow" | "look_around" | "wave" | "say" | "gesture" | "grab" | "drop" | "crouch" | "wait",
-  "target": "<2-4 word visual description of the thing to approach, follow or grab, else null>",
+  "heard": "<the words in a chat bubble above another avatar's head, copied exactly, else null>",
+  "new_errand": "<if those words ask you to do something: the task in a few words, else null>",
+  "requester": "<who asked: the name on their nameplate if readable, and 2-4 words on their look>",
+  "reply": "<a short chat answer to those words, sent right away, else null>",
+  "intent": "approach" | "follow" | "look_around" | "wave" | "say" | "gesture" | "grab" | "give" | "drop" | "crouch" | "wait",
+  "target": "<2-4 word visual description of the thing to approach, follow, grab or give to, else null>",
   "target_xy": [<x>, <y>] or null,
   "target_is_person": true | false,
-  "say": "<chat text if intent is say or wave, else null>",
+  "say": "<chat text for say or wave, or to say on arrival with approach, follow or give, else null>",
   "gesture": "fist" | "open" | "point" | "victory" | "rocknroll" | "gun" | "thumbsup" | "neutral" | null,
+  "errand_done": true | false,
   "why": "<one short reason>"
 }
 "target" is passed to a segmentation model, so describe what it LOOKS like: species,
@@ -43,13 +48,24 @@ With "approach" or "follow" you may also fill "say" and "gesture": with approach
 moment you are close, with follow at the end of following while you are still next to them. If the
 goal asks you to greet someone, ALWAYS fill both in the approach or follow decision.
 You cannot climb stairs: pick people on your own floor, not on balconies or upper levels.
-"look_around" turns until someone comes into view (fast), so use it whenever nobody suitable is visible.
+"look_around" turns until a person comes into view (fast); with an object as "target" it turns until
+that object is in view. Use it whenever what you need is not visible.
 Ignore mirror reflections, menus, thumbnails and HUD overlays: they cannot be walked to.
 "gesture" shows a hand sign with your right hand (it stays until you pick another; "neutral" relaxes it).
 "grab" walks to a small loose object and picks it up with the right hand; "drop" lets go.
 While you hold something, the HUD on the right shows a "Drop (B)" prompt; a prompt with an
 RT icon and a name means your crosshair is on something you can grab or use.
 "crouch" toggles crouching.
+Other players talk by typing: their words appear in a chat bubble above their head and nameplate.
+Read every bubble you can see. When someone asks you for something, answer in "reply" and take it
+on as your errand; it is listed under "Errand" until it is done. Work on it over the next
+decisions, starting right away (no need to walk over to them first). To bring someone an object:
+"grab" it if you can see it, else "look_around" with the object as "target"; once you hold it,
+"look_around" without a target to find the person again, then "give". If it cannot be done, tell
+them with "say".
+Set "errand_done" when the errand is finished or given up.
+"give" walks to a person (target, target_xy, target_is_person true) and hands over what your
+right hand holds; put what to say while handing it over in "say".
 Prefer approaching people, then greeting them once you are close. Keep chat short and friendly."""
 
 
@@ -88,10 +104,57 @@ class Memory:
         self.events.append(text)
         del self.events[: -self.limit]
 
-    def prompt(self, goal: str, body: str | None = None) -> str:
+    def prompt(self, goal: str, body: str | None = None, errand: str | None = None) -> str:
         recent = "\n".join(f"- {e}" for e in self.events) or "- (nothing yet)"
+        errand_line = f"Errand: {errand}\n" if errand else ""
         body_line = f"Body: {body}\n" if body else ""
-        return f"Goal: {goal}\n{body_line}Recent:\n{recent}\nWhat next?"
+        return f"Goal: {goal}\n{errand_line}{body_line}Recent:\n{recent}\nWhat next?"
+
+
+def _key(text: str) -> str:
+    return " ".join(text.lower().split())
+
+
+@dataclass
+class Errands:
+    """What someone asked for in chat, kept until it is done.
+
+    A chat bubble stays up for a while, so the same words show up in several frames; each
+    text is answered and starts an errand only once.
+    """
+    current: dict | None = None
+    heard: set[str] = field(default_factory=set)
+
+    def read(self, d: dict) -> tuple[bool, dict | None]:
+        """Take in one decision. Returns (the bubble text is new, the errand it started)."""
+        # A give finishes the errand itself, once the hand-over happened (Muse Spark marks it
+        # done in the same decision that starts walking over).
+        if d.get("errand_done") and d.get("intent") != "give":
+            self.current = None
+        words = str(d.get("heard") or "").strip()
+        fresh = bool(words) and _key(words) not in self.heard
+        if fresh:
+            self.heard.add(_key(words))
+        task = str(d.get("new_errand") or "").strip()
+        if not task or (words and not fresh):
+            return fresh, None
+        if not words:  # an errand Muse Spark inferred without a bubble: once per task
+            if _key(task) in self.heard:
+                return fresh, None
+            self.heard.add(_key(task))
+        self.current = {"task": task, "for": str(d.get("requester") or "the person who asked"),
+                        "heard": words or None}
+        return fresh, self.current
+
+    def done(self) -> None:
+        self.current = None
+
+    def describe(self) -> str | None:
+        if not self.current:
+            return None
+        e = self.current
+        asked = f", who wrote {e['heard']!r}" if e.get("heard") else ""
+        return f"{e['task']} (asked by {e['for']}{asked})"
 
 
 class Agent:
@@ -108,6 +171,9 @@ class Agent:
         self.steer_params = SteerParams(fov_v_deg=settings.fov_v_deg)
         self.goal = goal
         self.memory = Memory()
+        self.errands = Errands()
+        # Seconds the held object is offered before it is dropped at the person's feet.
+        self.handover_seconds = 2.5
         self.pool = ThreadPoolExecutor(max_workers=2)
         self.people: list[Detection] = []
         self.follow_seconds = 20.0
@@ -145,14 +211,28 @@ class Agent:
             body = self.senses.summary()
         # The people detector runs while Muse Spark thinks, so it costs no extra time.
         people = self.pool.submit(self.find_people, frame)
-        reply = self.api.see(frame, SYSTEM, self.memory.prompt(self.goal, body))
+        reply = self.api.see(frame, SYSTEM, self.memory.prompt(self.goal, body, self.errands.describe()))
         try:
             d = extract_json(reply)
         except ValueError:
             d = {"intent": "wait", "why": "unparseable reply", "raw": reply[:300]}
         self.people = people.result()
         d["people"] = [[p.x1, p.y1, p.x2, p.y2] for p in self.people]
+        self.read_chat(d)
         return d
+
+    def read_chat(self, d: dict) -> None:
+        """Answer new chat bubbles right away and turn requests into the errand."""
+        had = self.errands.current
+        fresh, errand = self.errands.read(d)
+        if had and self.errands.current is not had:
+            self.act(f"errand {'replaced' if errand else 'finished'}: {had['task']}")
+        if errand:
+            self.act(f"{errand['for']} asked: {errand['task']}")
+        if fresh and d.get("reply"):
+            self.body.say(str(d["reply"]))
+            self.act(f"replied {d['reply']!r}")
+        d["errand"] = self.errands.current  # for the replay
 
     def find_people(self, frame: Image.Image) -> list[Detection]:
         """Every avatar in view. Descriptive phrases miss stylised avatars ("cat girl",
@@ -220,6 +300,23 @@ class Agent:
             self.act(f"pressed grab on {target!r} (check the hand and the HUD 'Drop' prompt)")
         time.sleep(0.5)
         self.body.level()
+
+    def give(self, target: str, hint: tuple[float, float] | None, d: dict) -> None:
+        """Walk to a person and hand over what the right hand holds."""
+        def hand_over() -> None:
+            line = str(d.get("say") or "Here you go!")
+            self.body.say(line)
+            self.act(f"said {line!r}")
+            # They can take it out of the hand meanwhile; otherwise it drops in front of them.
+            time.sleep(self.handover_seconds)
+            self.body.drop()
+            self.act(f"handed what I held to {target}")
+            if self.errands.current:
+                self.act(f"errand finished: {self.errands.current['task']}")
+                self.errands.done()
+
+        if not self.approach(target, hint=hint, person=True, on_arrive=hand_over):
+            self.memory.add(f"did not reach {target} to hand it over (still holding it)")
 
     def approach(self, target: str, hint: tuple[float, float] | None = None, max_steps: int = 12,
                  arrive_height: float | None = None, person: bool = False, follow_seconds: float = 0.0,
@@ -308,11 +405,11 @@ class Agent:
             return turn
         return 60.0
 
-    def scan(self, step_deg: float = 45.0) -> None:
-        """Turn in steps, running only the people detector (~1 s) at each, and stop as
-        soon as someone is in view; the next decision then sees them. A VLM decision per
+    def scan(self, step_deg: float = 45.0, target: str | None = None) -> None:
+        """Turn in steps, running only SAM (~1 s) at each, and stop as soon as a person, or
+        the target object, is in view; the next decision then sees it. A VLM decision per
         60 degree turn took ~5 s each (10-28)."""
-        first = self.search_turn()
+        first = self.search_turn() if target is None else step_deg
         direction = math.copysign(1.0, first)
         turned = 0.0
         turns = [first] + [direction * step_deg] * int((360 - abs(first)) // step_deg)
@@ -321,13 +418,31 @@ class Agent:
             turned += turn
             time.sleep(0.15)
             frame = self.cam.grab()
-            people = [p for p in self.find_people(frame) if (p.conf or 0) >= 0.5]
-            self.log(frame, {"phase": "scan", "turned": round(turned), "people": [[p.x1, p.y1, p.x2, p.y2] for p in people]})
-            if people:
-                self.memory.add(f"scanned {abs(turned):.0f} degrees {'right' if turned > 0 else 'left'} "
-                                f"and now see {len(people)} person(s)")
+            side = f"{abs(turned):.0f} degrees {'right' if turned > 0 else 'left'}"
+            if target is None:
+                people = [p for p in self.find_people(frame) if (p.conf or 0) >= 0.5]
+                self.log(frame, {"phase": "scan", "turned": round(turned),
+                                 "people": [[p.x1, p.y1, p.x2, p.y2] for p in people]})
+                if people:
+                    self.memory.add(f"scanned {side} and now see {len(people)} person(s)")
+                    return
+                continue
+            det = self.find_object(frame, target)
+            self.log(frame, {"phase": "scan", "turned": round(turned), "target": target,
+                             **({"box": [det.x1, det.y1, det.x2, det.y2], "conf": det.conf} if det else {})})
+            if det is not None:
+                self.memory.add(f"scanned {side} and now see {target!r}")
                 return
-        self.memory.add("scanned a full circle and saw nobody")
+        self.memory.add("scanned a full circle and saw nobody" if target is None
+                        else f"scanned a full circle and did not find {target!r}")
+
+    def find_object(self, frame: Image.Image, target: str) -> Detection | None:
+        """The target phrase, then its bare noun ('cafe menu' -> 'menu')."""
+        for phrase in dict.fromkeys([target, target.split()[-1]]):
+            det = pick([x for x in self.api.segment(frame, phrase) if (x.conf or 0) >= 0.5])
+            if det is not None:
+                return det
+        return None
 
     def greet(self, d: dict) -> None:
         """Say and gesture what the decision planned for arrival."""
@@ -347,7 +462,7 @@ class Agent:
         self.log(frame, {"phase": "decide", **d})
         intent = d.get("intent")
         print(f"[{self.step}] {intent}: {d.get('observation')} ({d.get('why')})")
-        person = bool(d.get("target_is_person"))
+        person = bool(d.get("target_is_person")) or intent == "give"
         hint = parse_xy(d.get("target_xy"))
         if person:
             hint = self.snap_to_person(hint)
@@ -358,7 +473,7 @@ class Agent:
                           follow_seconds=self.follow_seconds if intent == "follow" else 0.0,
                           on_arrive=lambda: self.greet(d))
         elif intent == "look_around":
-            self.scan()
+            self.scan(target=str(d["target"]) if d.get("target") and not person else None)
         elif intent == "wave":
             if d.get("say"):
                 self.body.say(str(d["say"]))
@@ -375,6 +490,8 @@ class Agent:
             self.act(f"right hand now shows {d['gesture']}")
         elif intent == "grab" and d.get("target"):
             self.grab(str(d["target"]), hint)
+        elif intent == "give" and d.get("target"):
+            self.give(str(d["target"]), hint, d)
         elif intent == "drop":
             self.body.drop()
             self.act("dropped what was in the right hand")
