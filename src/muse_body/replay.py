@@ -114,9 +114,9 @@ def _box(draw, box, scale, color, width, label=None, font=None):
     draw.rectangle([x1, y1, x2, y2], outline=color, width=width)
     if label and font:
         tw = draw.textlength(label, font=font)
-        ty = y1 - 28 if y1 >= 28 else y2 + 2
-        draw.rectangle([x1, ty, x1 + tw + 12, ty + 26], fill=color)
-        draw.text((x1 + 6, ty + 1), label, fill=BG, font=font)
+        tx, ty = min(x1, VIEW_W - tw - 12), y1 - 28 if y1 >= 28 else y2 + 2  # kept inside the view
+        draw.rectangle([tx, ty, tx + tw + 12, ty + 26], fill=color)
+        draw.text((tx + 6, ty + 1), label, fill=BG, font=font)
 
 
 def render(shot: Shot, goal: str, t0: float, f: Fonts, recent_acts: list[str]) -> Image.Image:
@@ -137,9 +137,15 @@ def render(shot: Shot, goal: str, t0: float, f: Fonts, recent_acts: list[str]) -
         _box(d, p, scale, PEOPLE, 3, "person", f.small)
     for o in r.get("own") or []:
         _box(d, o, scale, MUTED, 3, "own arm (ignored)", f.small)
+    # An object scan's SAM matches, numbered as Muse Spark saw them when it picked one.
+    cands, chosen = r.get("candidates") or [], r.get("pick")
+    for i, c in enumerate(cands, 1):
+        if i != chosen:
+            _box(d, c, scale, MUTED, 3, f"{i} not it", f.small)
     if r.get("box"):
         conf = f" {r['conf']:.2f}" if r.get("conf") is not None else ""
-        _box(d, r["box"], scale, TARGET, 5, f"SAM 3.1: {r.get('target', '')}{conf}", f.small)
+        number = f"{chosen} · " if cands and chosen else ""
+        _box(d, r["box"], scale, TARGET, 5, f"{number}SAM 3.1: {r.get('target', '')}{conf}", f.small)
         bx = (r["box"][0] + r["box"][2]) / 2 * scale
         by = (r["box"][1] + r["box"][3]) / 2 * scale
         d.line([cx, cy, bx, by], fill=TARGET, width=2)
@@ -158,6 +164,15 @@ def render(shot: Shot, goal: str, t0: float, f: Fonts, recent_acts: list[str]) -
         d.rounded_rectangle([x0, 112, x0 + tw + 36, 124 + 32 * len(lines)], radius=12, fill=(250, 250, 250))
         for i, line in enumerate(lines):
             d.text((x0 + 18, 116 + 32 * i), line, fill=BG, font=f.body)
+    if cands and r.get("check"):
+        verdict = f"Muse Spark picks {chosen}" if chosen else "Muse Spark: none of them"
+        lines = wrap(d, f"{verdict}: {r['check']}", f.body, VIEW_W - 240)[:2]
+        tw = max(d.textlength(line, font=f.body) for line in lines)
+        x0, y0 = (VIEW_W - tw) / 2 - 18, VIEW_H - 40 - 32 * len(lines)
+        d.rounded_rectangle([x0, y0, x0 + tw + 36, y0 + 12 + 32 * len(lines)], radius=12,
+                            fill=BG, outline=TARGET, width=2)
+        for i, line in enumerate(lines):
+            d.text((x0 + 18, y0 + 4 + 32 * i), line, fill=TEXT, font=f.body)
 
     # Right panel: goal, decision, live telemetry.
     px, pw = VIEW_W + 28, W - VIEW_W - 56
@@ -212,6 +227,8 @@ def render(shot: Shot, goal: str, t0: float, f: Fonts, recent_acts: list[str]) -
     now = {"decide": "thinking (Muse Spark)", "follow": "following", "approach": "approaching",
            "scan": "scanning", "aim": "aiming crosshair",
            "holding": "noting what it holds"}.get(phase, phase)
+    if cands:
+        now = "checking SAM's matches"
     d.text((px, y), now, fill=TEXT, font=f.body)
     y += 46
     rows = []
@@ -223,6 +240,9 @@ def render(shot: Shot, goal: str, t0: float, f: Fonts, recent_acts: list[str]) -
         rows.append(f"height    {(r['box'][3] - r['box'][1]) / frame.height:6.0%}")
     if phase == "scan":
         rows.append(f"turned    {r.get('turned', 0):+6d}°")
+    if cands:
+        rows.append(f"matches   {len(cands):6d}")
+        rows.append(f"picked    {'#' + str(chosen) if chosen else 'none':>6}")
     if r.get("people") is not None:
         rows.append(f"people    {len(r['people']):6d}")
     if r.get("arrived"):

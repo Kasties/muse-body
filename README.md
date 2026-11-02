@@ -49,6 +49,11 @@ Spark reads the bubble above their head (and the name on their nameplate), answe
 and works the request off over the next decisions: it turns until SAM 3.1 finds the object,
 walks up and grabs it, turns to find the person again, walks over and hands it to them.
 
+While turning, SAM 3.1 proposes and Muse Spark picks. SAM matches pictures of the object too:
+"menu" finds the menu boards on a café wall as well as the menu on the counter. So every match
+is numbered on the frame, and Muse Spark says which number is the object itself, or none. The
+turn stops only on the real object and faces it.
+
 ```
 muse-body --goal "Hang around near people and help anyone who asks you for something in chat."
 ```

@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
 from .body import GESTURES, THINKING_PARAM, Body
 from .capture import Camera, is_foreground
@@ -72,8 +72,16 @@ Set "errand_done" when the errand is finished or given up.
 right hand holds; put what to say while handing it over in "say".
 Prefer approaching people, then greeting them once you are close. Keep chat short and friendly."""
 
+CHECK = """A segmentation model searched one first-person VRChat frame for an object and marked
+each match with a numbered box. Reply with a single JSON object only:
+{"pick": <number of the box around the object itself, or null if no box is>, "why": "<one short reason>"}
+The object is a real, loose thing in the room that you could walk to and pick up. A poster, menu
+board, sign, screen, picture or wall decal that shows or names it is not it, and neither is a
+mirror reflection or a HUD icon."""
+
 
 GENERIC_PERSON = ["character", "person"]
+MARK = (255, 0, 200)  # numbered boxes Muse Spark picks from
 
 
 def parse_xy(value) -> tuple[float, float] | None:
@@ -96,6 +104,20 @@ def phrase_tails(target: str, shortest: int = 1) -> list[str]:
         # "menu stand" before "black stand" (live 10-28: that matched only the stand's base).
         out.insert(len(out) - 1, f"{words[0]} {words[-1]}")
     return list(dict.fromkeys(out))
+
+
+def numbered(frame: Image.Image, dets: list[Detection]) -> Image.Image:
+    """A copy of the frame with each detection boxed and numbered from 1."""
+    img = frame.convert("RGB")
+    draw = ImageDraw.Draw(img)
+    font = ImageFont.load_default(28)
+    for i, det in enumerate(dets, 1):
+        draw.rectangle([det.x1, det.y1, det.x2, det.y2], outline=MARK, width=4)
+        tw = draw.textlength(str(i), font=font)
+        tx, ty = min(det.x1, img.width - tw - 14), det.y1 - 34 if det.y1 >= 34 else det.y1 + 4
+        draw.rectangle([tx, ty, tx + tw + 14, ty + 32], fill=MARK)
+        draw.text((tx + 7, ty + 1), str(i), fill=(255, 255, 255), font=font)
+    return img
 
 
 @dataclass
@@ -195,6 +217,8 @@ class Agent:
         self.holding = False
         self.held_box: Detection | None = None
         self.own_boxes: list[Detection] = []
+        # The phrase SAM found the object with in the last object scan, a fallback for grounding it.
+        self.found_phrase: str | None = None
         self.pool = ThreadPoolExecutor(max_workers=2)
         self.people: list[Detection] = []
         self.follow_seconds = 20.0
@@ -290,7 +314,7 @@ class Agent:
 
     def note_held(self, target: str) -> None:
         """Right after a grab, find where the held object sits on screen."""
-        self.holding, self.own_boxes = True, []
+        self.holding, self.own_boxes, self.found_phrase = True, [], None
         frame = self.cam.grab()
         self.held_box = None
         for phrase in dict.fromkeys([target, target.split()[-1]]):
@@ -332,8 +356,14 @@ class Agent:
         People go the other way round: the generic words first, kept on the right avatar by
         the hint, then the full description. Tails of a person's description are body parts
         (10-29: "girl with tail" -> "tail" locked onto a tail tip and a fish decal on the
-        wall, "girl with yellow bow" onto her hair bow)."""
+        wall, "girl with yellow bow" onto her hair bow).
+
+        Objects finally try the phrase the last object scan found them with, if it shares a word
+        with the target (11-02: the scan found the menu as "menu", then SAM found nothing for
+        Muse Spark's "black menu stand" or any of its tails)."""
         phrases = GENERIC_PERSON + [target] if person else phrase_tails(target)
+        if not person and self.found_phrase and set(self.found_phrase.split()) & set(target.split()):
+            phrases = list(dict.fromkeys(phrases + [self.found_phrase]))
         for phrase in phrases:
             dets = self.api.segment(frame, phrase)
             if person:
@@ -501,10 +531,12 @@ class Agent:
     def scan(self, step_deg: float = 45.0, target: str | None = None) -> None:
         """Turn in steps, running only SAM (~1 s) at each, and stop as soon as a person, or
         the target object, is in view; the next decision then sees it. A VLM decision per
-        60 degree turn took ~5 s each (10-28)."""
+        60 degree turn took ~5 s each (10-28). Muse Spark is asked only when SAM matches the
+        object, to tell it from pictures of it, and the scan then turns to face it."""
         first = self.search_turn() if target is None else step_deg
         direction = math.copysign(1.0, first)
         turned = 0.0
+        ruled_out = 0
         turns = [first] + [direction * step_deg] * int((360 - abs(first)) // step_deg)
         for turn in turns:
             self.body.turn_by(turn)
@@ -520,22 +552,56 @@ class Agent:
                     self.memory.add(f"scanned {side} and now see {len(people)} person(s)")
                     return
                 continue
-            det = self.find_object(frame, target)
-            self.log(frame, {"phase": "scan", "turned": round(turned), "target": target,
+            det, phrase, check = self.find_object(frame, target)
+            self.log(frame, {"phase": "scan", "turned": round(turned), "target": target, **check,
                              **({"box": [det.x1, det.y1, det.x2, det.y2], "conf": det.conf} if det else {})})
-            if det is not None:
-                self.memory.add(f"scanned {side} and now see {target!r}")
-                return
-        self.memory.add("scanned a full circle and saw nobody" if target is None
-                        else f"scanned a full circle and did not find {target!r}")
+            if det is None:
+                ruled_out += len(check.get("candidates", []))
+                continue
+            # Face it, so the next decision sees it whole and in the middle of the view.
+            self.body.turn_by(bearing_deg(det, self.steer_params.fov_v_deg))
+            self.found_phrase = phrase
+            self.memory.add(f"scanned {side} and now face {target!r}")
+            return
+        if target is None:
+            self.memory.add("scanned a full circle and saw nobody")
+        else:
+            others = f" ({ruled_out} pictures or look-alikes ruled out)" if ruled_out else ""
+            self.memory.add(f"scanned a full circle and did not find {target!r}{others}")
 
-    def find_object(self, frame: Image.Image, target: str) -> Detection | None:
-        """The target phrase, then its bare noun ('cafe menu' -> 'menu')."""
-        for phrase in dict.fromkeys([target, target.split()[-1]]):
-            det = pick([x for x in self.api.segment(frame, phrase) if (x.conf or 0) >= 0.5])
-            if det is not None:
-                return det
-        return None
+    def find_object(self, frame: Image.Image, target: str) -> tuple[Detection | None, str, dict]:
+        """SAM 3.1 proposes, Muse Spark picks. Every match of the phrase and of its bare noun
+        ('printed menu' -> 'menu') is numbered on the frame, and Muse Spark says which box is the
+        object itself (11-02: 'printed menu' matched only the menu board on the wall; 'menu' also
+        found the clipboard menu on the counter below it). Returns the object, the phrase that
+        found it, and what to log."""
+        phrases = list(dict.fromkeys([target, target.split()[-1]]))
+        cands: list[tuple[Detection, str]] = []
+        for phrase, dets in self.pool.map(lambda p: (p, self.api.segment(frame, p)), phrases):
+            for det in sorted(dets, key=lambda x: -(x.conf or 0)):
+                if (det.conf or 0) >= 0.4 and all(iou(det, c) < 0.5 for c, _ in cands):
+                    cands.append((det, phrase))
+        cands = cands[:6]
+        if not cands:
+            return None, target, {}
+        record: dict = {"candidates": [[c.x1, c.y1, c.x2, c.y2] for c, _ in cands]}
+        try:
+            d = extract_json(self.api.see(numbered(frame, [c for c, _ in cands]), CHECK,
+                                          f"Looking for: {target}"))
+        except Exception as e:  # without the check, trust SAM's most confident match
+            print(f"[check] {e}")
+            d = {"pick": 1 + max(range(len(cands)), key=lambda i: cands[i][0].conf or 0),
+                 "why": "not checked"}
+        try:
+            n = int(d.get("pick"))
+        except (TypeError, ValueError):  # null: none of them
+            n = None
+        n = n if n is not None and 1 <= n <= len(cands) else None
+        record.update(pick=n, check=str(d.get("why") or ""))
+        if n is None:
+            return None, target, record
+        det, phrase = cands[n - 1]
+        return det, phrase, record
 
     def greet(self, d: dict) -> None:
         """Say and gesture what the decision planned for arrival."""
