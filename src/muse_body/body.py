@@ -17,6 +17,12 @@ from pythonosc.udp_client import SimpleUDPClient
 # VRChat's standard hand gestures, in GestureLeft/GestureRight order.
 GESTURES = ["neutral", "fist", "open", "point", "victory", "rocknroll", "gun", "thumbsup"]
 
+# Avatar parameters the agent drives so people next to it can see its state. They do nothing
+# until the avatar has them (synced, in its Expression Parameters); VRChat ignores unknown ones.
+THINKING_PARAM = "Thinking"  # bool: true while Muse Spark decides
+MOOD_PARAM = "Mood"  # int: index into MOODS
+MOODS = ["neutral", "happy", "curious", "confused", "surprised"]
+
 
 def _clamp(v: float) -> float:
     return float(max(-1.0, min(1.0, v)))
@@ -253,6 +259,15 @@ class Body:
 
     def param(self, name: str, value) -> None:
         self.osc.send(f"/avatar/parameters/{name}", value)
+
+    def thinking(self, on: bool) -> None:
+        """Show that the mind is busy: the Thinking parameter and the chatbox typing dots."""
+        self.param(THINKING_PARAM, bool(on))
+        self.osc.send("/chatbox/typing", bool(on))
+
+    def mood(self, name: str) -> None:
+        if name in MOODS:
+            self.param(MOOD_PARAM, MOODS.index(name))
 
     def emote(self, slot: int, seconds: float = 2.0) -> None:
         """Play an avatar emote via the VRCEmote parameter (avatar-dependent; 1 is wave on SDK menus)."""

@@ -12,7 +12,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from .body import GESTURES, Body
+from .body import GESTURES, THINKING_PARAM, Body
 from .capture import Camera, is_foreground
 from .config import Settings
 from .meta_api import MetaClient, extract_json
@@ -35,8 +35,10 @@ Choose ONE next intention. Reply with a single JSON object only:
   "say": "<chat text for say or wave, or to say on arrival with approach, follow or give, else null>",
   "gesture": "fist" | "open" | "point" | "victory" | "rocknroll" | "gun" | "thumbsup" | "neutral" | null,
   "errand_done": true | false,
+  "mood": "neutral" | "happy" | "curious" | "confused" | "surprised",
   "why": "<one short reason>"
 }
+"mood" is the face your avatar shows from now on; people next to you see it.
 "target" is passed to a segmentation model, so describe what it LOOKS like: species,
 colour, clothing ("raccoon", "green dinosaur", "girl with pink hair"). Name the object itself
 with its usual noun ("black clipboard"), not what it stands on ("menu stand").
@@ -164,7 +166,8 @@ class Agent:
         self.cam = Camera()
         self.body = Body(settings.osc_host, settings.osc_port, dry_run=dry_run, locomotion=locomotion)
         try:
-            self.senses: Senses | None = Senses(settings.osc_host, settings.osc_in_port).start()
+            self.senses: Senses | None = Senses(settings.osc_host, settings.osc_in_port,
+                                                own=frozenset({THINKING_PARAM})).start()
         except OSError as e:  # port taken by another OSC app
             print(f"[senses] OSC output not available on {settings.osc_in_port}: {e}")
             self.senses = None
@@ -211,13 +214,20 @@ class Agent:
             body = self.senses.summary()
         # The people detector runs while Muse Spark thinks, so it costs no extra time.
         people = self.pool.submit(self.find_people, frame)
-        reply = self.api.see(frame, SYSTEM, self.memory.prompt(self.goal, body, self.errands.describe()))
+        # The ~5 s decision is visible in-world: Thinking on the avatar, typing dots in chat.
+        self.body.thinking(True)
+        try:
+            reply = self.api.see(frame, SYSTEM, self.memory.prompt(self.goal, body, self.errands.describe()))
+        finally:
+            self.body.thinking(False)
         try:
             d = extract_json(reply)
         except ValueError:
             d = {"intent": "wait", "why": "unparseable reply", "raw": reply[:300]}
         self.people = people.result()
         d["people"] = [[p.x1, p.y1, p.x2, p.y2] for p in self.people]
+        if d.get("mood"):
+            self.body.mood(str(d["mood"]))
         self.read_chat(d)
         return d
 

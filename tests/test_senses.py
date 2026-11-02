@@ -6,11 +6,12 @@ from muse_body.senses import Senses
 
 
 def test_reads_params_and_reports_touch():
-    s = Senses(port=19001).start()
+    s = Senses(port=19001, own=frozenset({"Thinking"})).start()
     try:
         c = SimpleUDPClient("127.0.0.1", 19001)
         c.send_message("/avatar/parameters/VelocityMagnitude", 1.5)
         c.send_message("/avatar/parameters/Grounded", True)
+        c.send_message("/avatar/parameters/Thinking", True)  # the agent's own: not a touch
         c.send_message("/avatar/parameters/HeadPat", True)
         c.send_message("/avatar/parameters/HeadPat", True)  # still true: no second event
         deadline = time.time() + 2

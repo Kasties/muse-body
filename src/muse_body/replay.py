@@ -196,6 +196,9 @@ def render(shot: Shot, goal: str, t0: float, f: Fonts, recent_acts: list[str]) -
     if dec.get("gesture"):
         d.text((px, y), f"plans gesture: {dec['gesture']}", fill=TEXT, font=f.small)
         y += 26
+    if dec.get("mood"):
+        d.text((px, y), f"mood: {dec['mood']}", fill=TEXT, font=f.small)
+        y += 26
     y += 18
 
     d.text((px, y), "NOW", fill=MUTED, font=f.label)

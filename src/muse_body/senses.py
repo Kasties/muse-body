@@ -31,7 +31,9 @@ class Reading:
 
 
 class Senses:
-    def __init__(self, host: str = "127.0.0.1", port: int = 9001):
+    def __init__(self, host: str = "127.0.0.1", port: int = 9001, own: frozenset[str] = frozenset()):
+        # Parameters the agent sets itself: VRChat echoes them back, but they are not touches.
+        self.own = own
         self.params: dict[str, Reading] = {}
         self.events: list[tuple[float, str]] = []
         self.avatar: str | None = None
@@ -66,7 +68,8 @@ class Senses:
         with self._lock:
             old = self.params.get(name)
             self.params[name] = Reading(value, now)
-            if name not in BUILTIN and isinstance(value, bool) and value and (old is None or not old.value):
+            if (name not in BUILTIN and name not in self.own and isinstance(value, bool) and value
+                    and (old is None or not old.value)):
                 self.events.append((now, f"{name} became true"))
                 del self.events[:-20]
 

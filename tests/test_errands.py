@@ -1,4 +1,20 @@
-from muse_body.agent import Errands, Memory
+from muse_body.agent import SYSTEM, Errands, Memory
+from muse_body.body import MOODS, Body
+
+
+def test_prompt_offers_the_moods_the_body_knows():
+    line = next(x for x in SYSTEM.splitlines() if x.strip().startswith('"mood"'))
+    assert [m for m in MOODS if f'"{m}"' in line] == MOODS
+
+
+def test_thinking_and_mood_go_out_over_osc(capsys):
+    body = Body(dry_run=True)
+    body.thinking(True)
+    body.mood("curious")
+    body.mood("grumpy")  # not a mood the avatar has: nothing sent
+    assert capsys.readouterr().out.splitlines() == [
+        "[osc] /avatar/parameters/Thinking True", "[osc] /chatbox/typing True",
+        "[osc] /avatar/parameters/Mood 2"]
 
 
 def ask(**kw):

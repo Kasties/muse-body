@@ -2,13 +2,15 @@
 
 An embodied agent for VRChat built on Meta's models. Muse Spark looks at the first-person
 view and picks an intention. SAM 3.1 finds the chosen target in the frame. A small
-controller turns the box into movement over VRChat's OSC input, then the loop repeats.
+controller turns the box into movement on a virtual Xbox gamepad, the way a player moves,
+then the loop repeats. OSC carries the chatbox and avatar parameters, and VRChat's OSC
+output comes back as body senses.
 
 ```
 frame ──► Muse Spark 1.3 ──► intent + target phrase
   ▲                               │
   │                               ▼
-  └──── OSC body ◄── steer ◄── SAM 3.1 boxes
+  └──── gamepad body ◄── steer ◄── SAM 3.1 boxes
 ```
 
 Built for the Meta Global AI Developer Hackathon (Indie track). **All code in this repository
@@ -16,9 +18,11 @@ was written during the hackathon, from Oct 28 2026 onward.** No prior code is in
 
 ## Setup
 
-1. Python 3.10+, then `pip install -e ".[dev]"`.
-2. Copy `.env.example` to `.env` and set `MODEL_API_KEY`.
-3. VRChat on desktop, windowed, with OSC enabled (Action Menu → Options → OSC → Enabled).
+1. Python 3.10+, then `pip install -e ".[dev]"` (with `VGAMEPAD_SKIP_VIGEMBUS_INSTALL=true` set).
+2. The [ViGEmBus](https://github.com/nefarius/ViGEmBus/releases) driver for the virtual gamepad.
+3. Copy `.env.example` to `.env` and set `MODEL_API_KEY`.
+4. VRChat on desktop, windowed, with OSC enabled (Action Menu → Options → OSC → Enabled).
+   VRChat ignores gamepad input while its window is not focused, so keep it in front.
 
 ## Run
 
@@ -38,6 +42,30 @@ muse-replay runs/<timestamp>                # writes runs/<timestamp>/replay.mp4
 muse-replay runs/<timestamp> --still 12     # one frame as a PNG, for checking
 ```
 
+## Errands
+
+People ask the agent for things the way players talk: by typing in VRChat's chatbox. Muse
+Spark reads the bubble above their head (and the name on their nameplate), answers in chat,
+and works the request off over the next decisions: it turns until SAM 3.1 finds the object,
+walks up and grabs it, turns to find the person again, walks over and hands it to them.
+
+```
+muse-body --goal "Hang around near people and help anyone who asks you for something in chat."
+```
+
+## Avatar state
+
+The agent sets avatar parameters over OSC so people next to it can see what it is doing. Add
+them to the avatar's Expression Parameters (synced) and drive animations from them:
+
+| Parameter | Type | Meaning |
+|---|---|---|
+| `Thinking` | Bool | true while Muse Spark decides (~5 s); the chatbox shows typing dots meanwhile |
+| `Mood` | Int | 0 neutral, 1 happy, 2 curious, 3 confused, 4 surprised; Muse Spark picks one per decision |
+
+Other custom bool parameters that turn true (for example a head-pat contact receiver) reach
+Muse Spark as something the body felt.
+
 ## Layout
 
 | File | What it does |
@@ -45,7 +73,8 @@ muse-replay runs/<timestamp> --still 12     # one frame as a PNG, for checking
 | `src/muse_body/meta_api.py` | Meta Model API client: Muse Spark chat with an image, SAM 3.1 via Responses |
 | `src/muse_body/sam_format.py` | Parser for SAM 3.1's `<\|box;...\|><\|mask;...\|>` output |
 | `src/muse_body/steer.py` | Box → bearing → turn/walk command, arrival check |
-| `src/muse_body/body.py` | VRChat OSC: axes, jump, chatbox, emotes |
+| `src/muse_body/body.py` | Virtual gamepad (calibrated turns, walking, grab, drop, gestures) and OSC (chatbox, avatar parameters) |
+| `src/muse_body/senses.py` | VRChat's OSC output as body senses: speed, grounded, touches |
 | `src/muse_body/capture.py` | VRChat window capture |
 | `src/muse_body/agent.py` | The decide → ground → move loop with a short memory |
 | `src/muse_body/replay.py` | Run log → annotated replay video |
