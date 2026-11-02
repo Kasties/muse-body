@@ -1,7 +1,8 @@
 """Carrying: the held object and the avatar's own arm stay put on screen (live 11-02)."""
 from muse_body.agent import Agent
 from muse_body.sam_format import Detection
-from muse_body.steer import SteerParams, covered, iou, screen_x, steer, x_bearing
+from muse_body.steer import (SteerParams, covered, elevation_deg, iou, screen_x, screen_y, steer,
+                             x_bearing)
 
 
 def box(x1, y1, x2, y2, conf=0.8):
@@ -24,6 +25,11 @@ def carrying() -> Agent:
 def test_screen_x_inverts_bearing():
     for x in (0.0, 383.0, 640.0, 1279.0):
         assert abs(screen_x(x_bearing(x, 70.0, 1280, 720), 70.0, 1280, 720) - x) < 1e-6
+
+
+def test_screen_y_inverts_elevation():
+    for y in (0, 200, 360, 719):
+        assert abs(screen_y(elevation_deg(box(0, y, 10, y), 70.0), 70.0, 720) - y) < 1e-6
 
 
 def test_overlap_measures():

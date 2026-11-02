@@ -54,7 +54,8 @@ While turning, SAM 3.1 proposes and Muse Spark picks. SAM matches pictures of th
 is numbered on the frame, and Muse Spark names what each box holds and says which number is the
 object itself, or none. The turn stops only on the real object and faces it. If Muse Spark's own
 name for the object finds nothing on the way there, the same check runs again with the phrase
-the scan found it with.
+the scan found it with. After looking all around twice without finding it, the agent tells the
+person it could not find it and drops the errand.
 
 ```
 muse-body --goal "Hang around near people and help anyone who asks you for something in chat."

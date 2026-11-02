@@ -18,8 +18,8 @@ from .config import Settings
 from .meta_api import MetaClient, extract_json
 from .sam_format import Detection
 from .senses import Senses
-from .steer import (SteerParams, bearing_deg, covered, elevation_deg, iou, pick, screen_x, steer,
-                    x_bearing)
+from .steer import (SteerParams, bearing_deg, covered, elevation_deg, iou, pick, screen_x, screen_y,
+                    steer, x_bearing)
 
 SYSTEM = """You are the mind of an avatar in VRChat. You see one first-person frame at a time.
 Choose ONE next intention. Reply with a single JSON object only:
@@ -66,7 +66,8 @@ on as your errand; it is listed under "Errand" until it is done. Work on it over
 decisions, starting right away (no need to walk over to them first). To bring someone an object:
 "grab" it if you can see it, else "look_around" with the object as "target"; once you hold it,
 "look_around" without a target to find the person again, then "give". If it cannot be done, tell
-them with "say".
+them with "say". Once you have looked all around twice without finding what the errand needs,
+tell them you could not find it and give the errand up.
 Set "errand_done" when the errand is finished or given up.
 "give" walks to a person (target, target_xy, target_is_person true) and hands over what your
 right hand holds; put what to say while handing it over in "say".
@@ -88,6 +89,8 @@ MARK = (255, 0, 200)  # numbered boxes Muse Spark picks from
 # seen. Live, right picks were within 0.07 of Muse Spark's point and moved at most 0.2 between
 # frames; picking the nearest box anywhere jumped to a wall menu board 0.32 and 0.64 away (11-02).
 OBJECT_NEAR = 0.25
+# An object this many degrees below the view centre gets looked down at while walking up to it.
+LOW_DEG = 10.0
 
 
 def parse_xy(value) -> tuple[float, float] | None:
@@ -197,7 +200,8 @@ class Errands:
             return None
         e = self.current
         asked = f", who wrote {e['heard']!r}" if e.get("heard") else ""
-        return f"{e['task']} (asked by {e['for']}{asked})"
+        missed = f"; looked all around {e['missed']} time(s) without finding it" if e.get("missed") else ""
+        return f"{e['task']} (asked by {e['for']}{asked}){missed}"
 
 
 class Agent:
@@ -369,11 +373,18 @@ class Agent:
 
         With `near`, a box further than that from the hint does not count (see OBJECT_NEAR).
 
-        If none of that finds an object, and the last object scan found one with a phrase that
-        shares a word with the target, SAM proposes with that phrase and Muse Spark picks, as in
-        the scan (11-02: SAM found nothing for Muse Spark's "black menu stand", twice; the
-        scan's own phrase also matched the menu boards on the wall)."""
+        If the last object scan found the object with a phrase that shares a word with the
+        target, that phrase goes first, and only tails that keep the shared word follow: the
+        others name something else (11-02: "colorful pen display" -> "display" was the
+        whiteboard above the pens, "black menu stand" -> "black stand" a small black box). If
+        nothing is found, SAM proposes with that phrase and Muse Spark picks, as in the scan
+        (11-02: SAM found nothing for Muse Spark's "black menu stand", twice; the scan's own
+        phrase also matched the menu boards on the wall)."""
         phrases = GENERIC_PERSON + [target] if person else phrase_tails(target)
+        shared = set(self.found_phrase.split()) & set(target.split()) if self.found_phrase else set()
+        scanned = not person and bool(shared)
+        if scanned:
+            phrases = list(dict.fromkeys([self.found_phrase] + [p for p in phrases if shared & set(p.split())]))
         for phrase in phrases:
             dets = self.api.segment(frame, phrase)
             if person:
@@ -382,7 +393,7 @@ class Agent:
             if det is not None:
                 # Stick with a phrase that worked unless it was a generic fallback.
                 return det, target if phrase in GENERIC_PERSON else phrase
-        if not person and self.found_phrase and set(self.found_phrase.split()) & set(target.split()):
+        if scanned:
             det, phrase, check = self.find_object(frame, self.found_phrase)
             self.log(frame, {"phase": "check", "target": target, **check,
                              **({"box": [det.x1, det.y1, det.x2, det.y2], "conf": det.conf} if det else {})})
@@ -414,6 +425,7 @@ class Agent:
         # Small objects never fill half the view; ~22% of the frame height is within reach
         # (cafe menu picked up at 27%, 10-28).
         if not self.approach(target, hint=hint, arrive_height=0.22):
+            self.body.level()
             return
         # Aim with the phrase that found it on the way, starting where it is now (11-02:
         # re-grounding Muse Spark's "black menu stand" matched "black stand" on a small black
@@ -518,8 +530,15 @@ class Agent:
                         on_arrive()
                     return True
                 continue
+            look = 0.0
+            if not person and elevation_deg(det, self.steer_params.fov_v_deg) < -LOW_DEG:
+                # Look down at a low object so it stays in view on the way (11-02: pens in a
+                # tray under a whiteboard sank out of the bottom of the level view, twice).
+                # Whoever started the approach levels the view again.
+                look = 0.9 * elevation_deg(det, self.steer_params.fov_v_deg)
+                self.body.look_by(look)
             self.body.turn_by(cmd.turn_deg)
-            hint = self.after_turn(det, cmd.turn_deg)
+            hint = self.after_turn(det, cmd.turn_deg, look)
             if cmd.walk and not cmd.arrived:
                 self.body.walk(0.6)
         if follow_seconds:
@@ -531,12 +550,14 @@ class Agent:
         self.memory.add(f"gave up approaching {target}")
         return False
 
-    def after_turn(self, det: Detection, turn: float) -> tuple[float, float]:
-        """Where the tracked box should show (0-1000) once the body turned by `turn` degrees.
-        (11-02: after a 36 degree turn the hint still pointed at the old spot.)"""
-        b = bearing_deg(det, self.steer_params.fov_v_deg) - turn
-        x = screen_x(b, self.steer_params.fov_v_deg, det.frame_w, det.frame_h)
-        return (min(max(1000 * x / det.frame_w, 0.0), 1000.0), 1000 * det.center[1] / det.frame_h)
+    def after_turn(self, det: Detection, turn: float, look: float = 0.0) -> tuple[float, float]:
+        """Where the tracked box should show (0-1000) once the body turned by `turn` degrees
+        and the view pitched by `look`. (11-02: after a 36 degree turn the hint still pointed
+        at the old spot.)"""
+        fov = self.steer_params.fov_v_deg
+        x = screen_x(bearing_deg(det, fov) - turn, fov, det.frame_w, det.frame_h)
+        y = screen_y(elevation_deg(det, fov) - look, fov, det.frame_h)
+        return (min(max(1000 * x / det.frame_w, 0.0), 1000.0), min(max(1000 * y / det.frame_h, 0.0), 1000.0))
 
     def describe_last_seen(self) -> str:
         b, t = self.last_seen
@@ -589,9 +610,11 @@ class Agent:
             return
         if target is None:
             self.memory.add("scanned a full circle and saw nobody")
-        else:
-            others = f" ({ruled_out} pictures or look-alikes ruled out)" if ruled_out else ""
-            self.memory.add(f"scanned a full circle and did not find {target!r}{others}")
+            return
+        others = f" ({ruled_out} pictures or look-alikes ruled out)" if ruled_out else ""
+        self.memory.add(f"scanned a full circle and did not find {target!r}{others}")
+        if self.errands.current:  # counted for the Errand line (11-02: seven circles for a pen)
+            self.errands.current["missed"] = self.errands.current.get("missed", 0) + 1
 
     def find_object(self, frame: Image.Image, target: str) -> tuple[Detection | None, str, dict]:
         """SAM 3.1 proposes, Muse Spark picks. Every match of the phrase and of its bare noun
@@ -667,6 +690,7 @@ class Agent:
             self.approach(str(d["target"]), hint=hint, person=person,
                           follow_seconds=self.follow_seconds if intent == "follow" else 0.0,
                           on_arrive=lambda: self.greet(d))
+            self.body.level()
         elif intent == "look_around":
             self.scan(target=str(d["target"]) if d.get("target") and not person else None)
         elif intent == "wave":

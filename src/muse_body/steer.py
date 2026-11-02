@@ -74,6 +74,12 @@ def elevation_deg(det: Detection, fov_v_deg: float) -> float:
     return math.degrees(math.atan((half_h - cy) / half_h * math.tan(math.radians(fov_v_deg) / 2)))
 
 
+def screen_y(elevation: float, fov_v_deg: float, frame_h: int) -> float:
+    """Inverse of elevation_deg: the frame row at which something at this elevation shows."""
+    half_h = frame_h / 2
+    return half_h - half_h * math.tan(math.radians(elevation)) / math.tan(math.radians(fov_v_deg) / 2)
+
+
 def steer(det: Detection, p: SteerParams = SteerParams(), arrive_height: float | None = None,
           offset_deg: float = 0.0) -> Command:
     """offset_deg keeps the target at that bearing instead of straight ahead while walking up
