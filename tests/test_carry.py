@@ -24,7 +24,7 @@ PLUSH, CARTOON = box(120, 312, 308, 598), box(473, 430, 498, 462)
 def carrying() -> Agent:
     a = object.__new__(Agent)  # just the carrying state, no camera or controller
     a.steer_params = SteerParams()
-    a.holding, a.held_box, a.own_boxes = True, MENU, []
+    a.holding, a.held_box, a.own_boxes, a.held_what = True, MENU, [], "menu"
     return a
 
 
@@ -105,13 +105,28 @@ def deciding(reply='{"intent": "wait"}', seen=([],)) -> Agent:
     return a
 
 
-def test_muse_spark_is_told_its_own_arm_is_in_view_while_carrying():
+def test_muse_spark_is_told_what_the_hand_holds_and_that_the_arm_is_its_own():
     a = deciding()
     a.decide(FakeCam().grab())
-    assert f"Body: {HOLDING}\n" in a.api.prompts[0]
+    body = HOLDING.format(what="menu")
+    assert f"Body: {body}\n" in a.api.prompts[0]
+    assert body.startswith("your right hand holds the menu: it floats in the middle of your view")
     a.let_go()
     a.decide(FakeCam().grab())
     assert "Body:" not in a.api.prompts[1]
+
+
+def test_no_second_grab_while_the_hand_is_full(monkeypatch):
+    # demo5 (11-04): the held menu floated over a table once the Drop prompt had faded, and Muse
+    # Spark asked to grab "black clipboard" three times; each press landed on the held menu.
+    monkeypatch.setattr(agent_mod.time, "sleep", lambda s: None)
+    a = deciding('{"intent": "grab", "target": "black clipboard", "target_xy": [597, 544]}')
+    walks = []
+    a.approach = lambda target, **kw: walks.append(target) or True
+    a.tick()
+    assert walks == [] and a.holding and a.held_what == "menu"
+    assert a.memory.events == ["did not grab 'black clipboard': the right hand already holds the "
+                               "menu; 'give' or 'drop' it first"]
 
 
 # runs/demo1 steps 6-7 (11-03): with the clipboard in hand, Muse Spark pointed "give" at the fur
@@ -140,13 +155,14 @@ def test_a_grab_counts_only_with_the_drop_prompt():
     # demo3 (11-04): grab pressed on a drink menu panel on the wall; the hand stayed empty.
     a = deciding('{"holding": false, "why": "No Drop prompt visible"}')
     a.note_held("standing menu board")
-    assert not a.holding and a.held_box is None
+    assert not a.holding and a.held_box is None and a.held_what is None
     assert a.memory.events == ["the grab on 'standing menu board' did not take: no 'Drop' prompt, "
                                "the hand is empty"]
     b = deciding('{"holding": true, "why": "Drop prompt with B icon visible"}')
-    b.holding = False
-    b.note_held("menu")
-    assert b.holding and b.memory.events == []
+    b.holding, b.held_what = False, None
+    b.note_held("restaurant menu")
+    assert b.holding and b.held_what == "restaurant menu"
+    assert b.memory.events == ["picked up 'restaurant menu'"]
     c = deciding("no json here")  # no answer: counted as taken, as before the check
     c.holding = False
     c.note_held("menu")

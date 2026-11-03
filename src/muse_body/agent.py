@@ -58,7 +58,8 @@ that object is in view. Use it whenever what you need is not visible.
 Ignore mirror reflections, menus, thumbnails and HUD overlays: they cannot be walked to.
 "gesture" shows a hand sign with your right hand (it stays until you pick another; "neutral" relaxes it).
 "grab" walks to a small loose object and picks it up with the right hand; "drop" lets go.
-While you hold something, the HUD on the right shows a "Drop (B)" prompt; a prompt with an
+"Body" says what your hand holds. A held object floats in the middle of your view and goes where you
+go; the HUD shows a "Drop (B)" prompt only for a few seconds after picking it up. A prompt with an
 RT icon and a name means your crosshair is on something you can grab or use.
 "crouch" toggles crouching.
 Other players talk by typing: their words appear in a chat bubble above their head and nameplate.
@@ -108,10 +109,14 @@ OBJECT_NEAR = 0.25
 OBJECT_RISE = 0.15
 # Told to Muse Spark under Body without the gamepad (--input osc), so it does not plan on hands.
 NO_PAD = "no gamepad, so you cannot grab, give, drop, crouch or show hand signs"
-# Told under Body while carrying: Muse Spark took the agent's own furry arm at the right edge
-# of the view for the requester and twice tried to hand it the clipboard (demo1, 11-03).
-HOLDING = ("while you hold something, your own right arm reaches into the view from the right: "
-           "fur or a hand at the right edge is you, not another person")
+# Told under Body while the hand holds something (the HUD check after the grab confirmed it).
+# Muse Spark took the agent's own furry arm for the requester (demo1, 11-03), and the held menu,
+# floating over a table once the HUD's Drop prompt had faded, for a menu standing on it: three
+# grab presses on the menu in its hand while the requester stood beside it (demo5, 11-04).
+HOLDING = ("your right hand holds the {what}: it floats in the middle of your view and goes where "
+           "you go until you 'give' or 'drop' it. Your own right arm holds it and fills the right "
+           "part of your view, often as a big blurry patch of fur: that is you, never another "
+           "person, however close it looks")
 # An object this many degrees below the view centre gets looked down at while walking up to it.
 LOW_DEG = 10.0
 
@@ -266,6 +271,7 @@ class Agent:
         # While carrying: where the held object and our own reaching arm sit on screen.
         self.holding = False
         self.held_box: Detection | None = None
+        self.held_what: str | None = None  # the phrase it was grabbed as, for the Body line
         self.own_boxes: list[Detection] = []
         # The phrase SAM found the object with in the last object scan, a fallback for grounding it.
         self.found_phrase: str | None = None
@@ -315,7 +321,8 @@ class Agent:
             for event in self.senses.take_events():
                 self.memory.add(f"felt: {event}")
             body = self.senses.summary()
-        notes = [body, None if self.body.has_pad else NO_PAD, HOLDING if self.holding else None]
+        notes = [body, None if self.body.has_pad else NO_PAD,
+                 HOLDING.format(what=self.held_what or "object you picked up") if self.holding else None]
         body = "; ".join(n for n in notes if n) or None
         heard = self.ears.take() if self.ears else []
         now = time.time()
@@ -398,11 +405,14 @@ class Agent:
         h = self.held_box
         self.log(frame, {"phase": "holding", "target": target, "took": took, "check": why,
                          **({"box": [h.x1, h.y1, h.x2, h.y2]} if h else {})})
-        if not took:
+        if took:
+            self.held_what = target
+            self.act(f"picked up {target!r}")
+        else:
             # demo3 (11-04): grab pressed on a wall panel, and the body went on as if carrying:
             # its own-arm mask and the Body note were on with an empty hand.
-            self.holding, self.held_box = False, None
-            self.memory.add(f"the grab on {target!r} did not take: no 'Drop' prompt, the hand is empty")
+            self.holding, self.held_box, self.held_what = False, None, None
+            self.act(f"the grab on {target!r} did not take: no 'Drop' prompt, the hand is empty")
 
     def grab_took(self, frame: Image.Image) -> tuple[bool, str]:
         """Muse Spark reads the HUD: VRChat shows a 'Drop' prompt while the hand holds
@@ -416,7 +426,7 @@ class Agent:
 
     def let_go(self) -> None:
         self.body.drop()
-        self.holding, self.held_box, self.own_boxes = False, None, []
+        self.holding, self.held_box, self.own_boxes, self.held_what = False, None, [], None
 
     def beside_held_deg(self) -> float:
         """Bearing that keeps a person just left of what we carry: the object floats in the
@@ -499,6 +509,12 @@ class Agent:
     def grab(self, target: str, hint: tuple[float, float] | None) -> None:
         if not self.can(f"pick up {target!r}"):
             return
+        if self.holding:
+            # One hand, and grabbing again only presses on what it holds (demo5, 11-04: three
+            # presses on the held menu, after which the HUD check found no Drop prompt).
+            self.memory.add(f"did not grab {target!r}: the right hand already holds the "
+                            f"{self.held_what or 'object you picked up'}; 'give' or 'drop' it first")
+            return
         # Small objects never fill half the view; ~22% of the frame height is within reach
         # (cafe menu picked up at 27%, 10-28).
         if not self.approach(target, hint=hint, arrive_height=0.22):
@@ -514,7 +530,7 @@ class Agent:
             self.memory.add(f"lost {target!r} while aiming")
         else:
             self.body.interact()
-            self.act(f"pressed grab on {target!r} (check the hand and the HUD 'Drop' prompt)")
+            self.act(f"pressed grab on {target!r}")
         time.sleep(0.5)
         self.body.level()
         if det is not None:
