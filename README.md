@@ -79,9 +79,9 @@ and activate again.
 
 The virtual gamepad (vgamepad) needs the ViGEmBus driver. If the driver is missing,
 `pip install` opens its installer: accept it for the VRChat run. To install without the driver,
-for the checks in step 3 only, set `$env:VGAMEPAD_SKIP_VIGEMBUS_INSTALL = "true"` before
-`pip install`, and add the driver later from its
-[releases page](https://github.com/nefarius/ViGEmBus/releases).
+set `$env:VGAMEPAD_SKIP_VIGEMBUS_INSTALL = "true"` before `pip install`. The checks in step 3
+work without it, and so does `muse-body --input osc`, minus grabbing and hand signs. You can add
+the driver later from its [releases page](https://github.com/nefarius/ViGEmBus/releases).
 
 ### 2. Add your API key
 
@@ -153,7 +153,7 @@ muse-replay runs\<timestamp> --still 12  # one frame as a PNG, for checking
 | You see | What to do |
 |---|---|
 | `MODEL_API_KEY is not set` | Create `.env` (step 2) and run from the repo folder |
-| `virtual gamepad unavailable` | Install the [ViGEmBus driver](https://github.com/nefarius/ViGEmBus/releases) |
+| `virtual gamepad unavailable` | Install the [ViGEmBus driver](https://github.com/nefarius/ViGEmBus/releases), or run with `--input osc`: it then walks, turns and talks, but cannot pick things up or show hand signs |
 | `waiting for the VRChat window to be focused` | Click into VRChat; the agent looks for a window titled "VRChat" |
 | `[senses] OSC output not available on 9001` | Another OSC app holds the port; close it. The agent runs on without body senses |
 | Nothing shows in its chatbox | Turn on OSC in VRChat (step 4) |
