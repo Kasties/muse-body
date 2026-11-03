@@ -144,7 +144,8 @@ def numbered(frame: Image.Image, dets: list[Detection]) -> Image.Image:
 class Memory:
     """A short rolling log of what the agent did, fed back into the next decision."""
     events: list[str] = field(default_factory=list)
-    limit: int = 8
+    # A talk is two events per turn (heard, replied): 8 kept only the last few lines of it.
+    limit: int = 20
 
     def add(self, text: str) -> None:
         self.events.append(text)
