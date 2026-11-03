@@ -88,12 +88,24 @@ the floor, even in a small stand or frame. Pictures of it are not it: posters, m
 signs on a wall, screens, decals, mirror reflections and HUD icons."""
 
 
+# Asked right after pressing grab (demo3, 11-04: a grab on a wall panel counted as holding).
+HELD = """One first-person VRChat desktop frame, taken right after pressing grab. Reply with a
+single JSON object only: {"holding": true | false, "why": "<one short reason>"}
+"holding" is true when the HUD shows a "Drop" prompt (usually on the right, with a B button
+icon): VRChat shows it only while the hand holds something. No "Drop" prompt means false, even if
+an object is close in front."""
+
 GENERIC_PERSON = ["character", "person"]
 MARK = (255, 0, 200)  # numbered boxes Muse Spark picks from
 # How far (fraction of the frame) an object's box may sit from where it was pointed at or last
 # seen. Live, right picks were within 0.07 of Muse Spark's point and moved at most 0.2 between
 # frames; picking the nearest box anywhere jumped to a wall menu board 0.32 and 0.64 away (11-02).
 OBJECT_NEAR = 0.25
+# Walking up to an object on a counter or table, it sinks in the view; it never rose more than
+# 0.1 of the frame above where it was expected (35 steps in 8 runs). demo3 (11-04) rose 0.2:
+# SAM missed the clipboard, and the drink menu panels above the counter took over until the
+# grab pressed on them. A box that much higher is something else.
+OBJECT_RISE = 0.15
 # Told to Muse Spark under Body without the gamepad (--input osc), so it does not plan on hands.
 NO_PAD = "no gamepad, so you cannot grab, give, drop, crouch or show hand signs"
 # Told under Body while carrying: Muse Spark took the agent's own furry arm at the right edge
@@ -372,18 +384,35 @@ class Agent:
         return False
 
     def note_held(self, target: str) -> None:
-        """Right after a grab, find where the held object sits on screen."""
-        self.holding, self.own_boxes, self.found_phrase = True, [], None
+        """Right after a grab: whether the hand holds it, and where it sits on screen."""
         frame = self.cam.grab()
+        held = self.pool.submit(self.grab_took, frame)
+        self.holding, self.own_boxes, self.found_phrase = True, [], None
         self.held_box = None
         for phrase in dict.fromkeys([target, target.split()[-1]]):
             self.held_box = pick([x for x in self.api.segment(frame, phrase) if (x.conf or 0) >= 0.5],
                                  hint=(500.0, 500.0))
             if self.held_box is not None:
                 break
+        took, why = held.result()
         h = self.held_box
-        self.log(frame, {"phase": "holding", "target": target,
+        self.log(frame, {"phase": "holding", "target": target, "took": took, "check": why,
                          **({"box": [h.x1, h.y1, h.x2, h.y2]} if h else {})})
+        if not took:
+            # demo3 (11-04): grab pressed on a wall panel, and the body went on as if carrying:
+            # its own-arm mask and the Body note were on with an empty hand.
+            self.holding, self.held_box = False, None
+            self.memory.add(f"the grab on {target!r} did not take: no 'Drop' prompt, the hand is empty")
+
+    def grab_took(self, frame: Image.Image) -> tuple[bool, str]:
+        """Muse Spark reads the HUD: VRChat shows a 'Drop' prompt while the hand holds
+        something. Without an answer the grab counts as taken, as before the check."""
+        try:
+            d = extract_json(self.api.see(frame, HELD, "Is the hand holding something?"))
+        except Exception as e:
+            print(f"[held] {e}")
+            return True, "not checked"
+        return d.get("holding") is not False, str(d.get("why") or "")
 
     def let_go(self) -> None:
         self.body.drop()
@@ -540,6 +569,9 @@ class Agent:
             frame = self.cam.grab()
             det, phrase = self.ground(frame, target, hint, person=person,
                                       near=None if person or hint is None else OBJECT_NEAR)
+            if det is not None and not person and seen and hint is not None \
+                    and det.center[1] / det.frame_h < hint[1] / 1000 - OBJECT_RISE:
+                det = None  # jumped up onto something else (see OBJECT_RISE)
             if det is None:
                 misses += 1
                 self.log(frame, {"phase": "approach", "target": target, "found": False})

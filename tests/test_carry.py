@@ -136,6 +136,23 @@ def test_a_give_with_nobody_in_view_looks_for_them_first(monkeypatch):
     assert target == "beige fluffy avatar" and 160 < x < 175 and 625 < y < 640
 
 
+def test_a_grab_counts_only_with_the_drop_prompt():
+    # demo3 (11-04): grab pressed on a drink menu panel on the wall; the hand stayed empty.
+    a = deciding('{"holding": false, "why": "No Drop prompt visible"}')
+    a.note_held("standing menu board")
+    assert not a.holding and a.held_box is None
+    assert a.memory.events == ["the grab on 'standing menu board' did not take: no 'Drop' prompt, "
+                               "the hand is empty"]
+    b = deciding('{"holding": true, "why": "Drop prompt with B icon visible"}')
+    b.holding = False
+    b.note_held("menu")
+    assert b.holding and b.memory.events == []
+    c = deciding("no json here")  # no answer: counted as taken, as before the check
+    c.holding = False
+    c.note_held("menu")
+    assert c.holding
+
+
 def test_a_people_scan_takes_smaller_steps_while_carrying(monkeypatch):
     monkeypatch.setattr(agent_mod.time, "sleep", lambda s: None)
     a = deciding(seen=[[ARM]])  # nobody else anywhere

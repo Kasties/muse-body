@@ -207,6 +207,21 @@ def test_approach_looks_down_at_a_low_object():
     assert 480 < hints[1][1] < 560  # expected back near the middle of the view
 
 
+def test_approach_drops_a_box_that_jumps_up():
+    # demo3 frames 9-10 (11-04): the clipboard on the counter, then (SAM missed it) a drink
+    # menu panel above the counter, 0.2 of the frame higher than the clipboard should have been.
+    a = scanner({})
+    frames = [box(309, 349, 350, 398, 0.56), box(475, 191, 587, 264, 0.63)]
+    a.ground = lambda frame, target, hint, person=False, near=None: (frames.pop(0), target)
+    assert not a.approach("standing menu board", hint=(250.0, 520.0), arrive_height=0.22)
+    assert a.memory.events[-1].startswith("lost sight of 'standing menu board'")
+    # Sinking as it comes closer is fine (demo1 frame 18: 0.17 lower than expected).
+    b = scanner({})
+    frames = [box(560, 380, 600, 430, 0.6), box(600, 480, 700, 600, 0.6), box(540, 300, 760, 680, 0.7)]
+    b.ground = lambda frame, target, hint, person=False, near=None: (frames.pop(0), target)
+    assert b.approach("small clipboard", hint=(450.0, 560.0), arrive_height=0.22)
+
+
 def test_check_logs_what_each_box_is():
     reply = '{"boxes": {"1": "wall menu board", "2": "wall screen", "3": "countertop menu stand"}, "pick": 3}'
     _, _, record = scanner(FRAME7, reply).find_object(Image.new("RGB", (1280, 720)), "printed menu")
