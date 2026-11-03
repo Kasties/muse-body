@@ -49,3 +49,12 @@ def test_reply_logged_before_the_decision_frame_goes_with_it(tmp_path):
     shots = load(tmp_path)
     assert shots[0].acts == ["replied 'Sure!'"]
     assert render(shots[0], "goal", 10.0, Fonts(), shots[0].acts).size == (1920, 1080)
+
+
+def test_heard_speech_renders(tmp_path):
+    Image.new("RGB", (1280, 720)).save(tmp_path / "00001.jpg")
+    decide = {"step": 1, "frame": "00001.jpg", "t": 10.0, "phase": "decide", "heard": "menu please",
+              "voice": ["Hey, could you bring me a menu, please?"],
+              "errand": {"task": "bring a menu", "for": "plush", "heard": "menu please", "spoken": True}}
+    (tmp_path / "events.jsonl").write_text(json.dumps(decide), encoding="utf-8")
+    assert render(load(tmp_path)[0], "goal", 10.0, Fonts(), []).size == (1920, 1080)

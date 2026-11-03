@@ -157,9 +157,12 @@ def render(shot: Shot, goal: str, t0: float, f: Fonts, recent_acts: list[str]) -
     if phase == "approach" and r.get("found") is False:
         d.text((24, 20), "SAM 3.1: target not in view", fill=TARGET, font=f.label,
                stroke_width=3, stroke_fill=BG)
-    if phase == "decide" and dec.get("heard"):
-        # What Muse Spark read in someone's chat bubble, as a caption over the view.
-        lines = wrap(d, f"read in chat: “{dec['heard']}”", f.body, VIEW_W - 240)[:2]
+    spoken = " ".join(dec.get("voice") or [])
+    if phase == "decide" and (spoken or dec.get("heard")):
+        # What Muse Voice Transcribe heard, or what Muse Spark read in someone's chat bubble,
+        # as a caption over the view.
+        caption = f"heard: “{spoken}”" if spoken else f"read in chat: “{dec['heard']}”"
+        lines = wrap(d, caption, f.body, VIEW_W - 240)[:2]
         tw = max(d.textlength(line, font=f.body) for line in lines)
         x0 = (VIEW_W - tw) / 2 - 18
         d.rounded_rectangle([x0, 112, x0 + tw + 36, 124 + 32 * len(lines)], radius=12, fill=(250, 250, 250))
@@ -182,6 +185,9 @@ def render(shot: Shot, goal: str, t0: float, f: Fonts, recent_acts: list[str]) -
     d.text((px, y), "muse-body", fill=TEXT, font=f.title)
     y += 48
     d.text((px, y), "Muse Spark decides  ·  SAM 3.1 grounds", fill=MUTED, font=f.small)
+    if "voice" in dec:  # the run listened
+        y += 26
+        d.text((px, y), "Muse Voice Transcribe hears", fill=MUTED, font=f.small)
     y += 44
     d.text((px, y), "GOAL", fill=MUTED, font=f.label)
     y += 28

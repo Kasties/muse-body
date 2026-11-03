@@ -25,6 +25,7 @@ class Settings:
     base_url: str = "https://api.meta.ai/v1"
     model: str = "muse-spark-1.3"
     sam_model: str = "sam-3.1"
+    asr_model: str = "muse-voice-transcribe-1.0"
     osc_host: str = "127.0.0.1"
     osc_port: int = 9000
     # VRChat's outgoing OSC (avatar parameters), read as body senses.
@@ -43,6 +44,7 @@ class Settings:
             base_url=os.environ.get("MUSE_BASE_URL", cls.base_url),
             model=os.environ.get("MUSE_MODEL", cls.model),
             sam_model=os.environ.get("MUSE_SAM_MODEL", cls.sam_model),
+            asr_model=os.environ.get("MUSE_ASR_MODEL", cls.asr_model),
             osc_host=os.environ.get("VRCHAT_OSC_HOST", cls.osc_host),
             osc_port=int(os.environ.get("VRCHAT_OSC_PORT", cls.osc_port)),
             osc_in_port=int(os.environ.get("VRCHAT_OSC_IN_PORT", cls.osc_in_port)),

@@ -3,14 +3,16 @@
 An embodied agent for VRChat built on Meta's models. Muse Spark looks at the first-person
 view and picks an intention. SAM 3.1 finds the chosen target in the frame. A small
 controller turns the box into movement on a virtual Xbox gamepad, the way a player moves,
-then the loop repeats. OSC carries the chatbox and avatar parameters, and VRChat's OSC
-output comes back as body senses.
+then the loop repeats. Muse Voice Transcribe writes down what people say to it. OSC carries
+the chatbox and avatar parameters, and VRChat's OSC output comes back as body senses.
 
 ```
-frame ──► Muse Spark 1.3 ──► intent + target phrase
-  ▲                               │
-  │                               ▼
-  └──── gamepad body ◄── steer ◄── SAM 3.1 boxes
+voices ──► Muse Voice Transcribe ──► words ──┐
+                                             ▼
+ frame ─────────────────────────────► Muse Spark 1.3 ──► intent + target phrase
+   ▲                                                          │
+   │                                                          ▼
+   └───────────────────── gamepad body ◄── steer ◄── SAM 3.1 boxes
 ```
 
 Built for the Meta Global AI Developer Hackathon (Indie track). **All code in this repository
@@ -58,8 +60,26 @@ the scan found it with. After looking all around twice without finding it, the a
 person it could not find it and drops the errand.
 
 ```
-muse-body --goal "Hang around near people and help anyone who asks you for something in chat."
+muse-body --goal "Hang around near people and help anyone who asks you for something."
 ```
+
+## Hearing
+
+People can also just talk to it. While the agent runs, what the PC plays (VRChat's voices
+included) streams to Muse Voice Transcribe's realtime endpoint, which finds where each sentence
+ends and writes it down. Each finished sentence goes into the next decision under "Heard", and
+Muse Spark treats it like a chat bubble: it answers in chat and takes a request on as the errand.
+Talk not meant for it, like a video playing on the PC, gets no answer. When someone is
+mid-sentence, the agent waits up to 5 s for them to finish before it looks and decides.
+
+```
+muse-hear              # print what it hears, to check the setup
+muse-body --no-hear    # without hearing
+```
+
+It listens to the default output device, so everything the PC plays is streamed and
+transcribed while it runs: pause videos and music, and turn VRChat's world volume down while
+keeping voices up. Streaming costs $0.18 per hour of audio.
 
 ## Avatar state
 
@@ -83,6 +103,7 @@ Muse Spark as something the body felt.
 | `src/muse_body/steer.py` | Box → bearing → turn/walk command, arrival check |
 | `src/muse_body/body.py` | Virtual gamepad (calibrated turns, walking, grab, drop, gestures) and OSC (chatbox, avatar parameters) |
 | `src/muse_body/senses.py` | VRChat's OSC output as body senses: speed, grounded, touches |
+| `src/muse_body/hearing.py` | The PC's audio output → Muse Voice Transcribe (realtime, turn detection) → what was said |
 | `src/muse_body/capture.py` | VRChat window capture |
 | `src/muse_body/agent.py` | The decide → ground → move loop with a short memory |
 | `src/muse_body/replay.py` | Run log → annotated replay video |

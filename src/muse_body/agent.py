@@ -1,10 +1,11 @@
-"""The loop: see (Muse Spark) -> ground (SAM 3.1) -> move (OSC) -> repeat."""
+"""The loop: hear (Muse Voice Transcribe) and see (Muse Spark) -> ground (SAM 3.1) -> move -> repeat."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import math
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -15,6 +16,7 @@ from PIL import Image, ImageDraw, ImageFont
 from .body import GESTURES, THINKING_PARAM, Body
 from .capture import Camera, is_foreground
 from .config import Settings
+from .hearing import Ears
 from .meta_api import MetaClient, extract_json
 from .sam_format import Detection
 from .senses import Senses
@@ -25,7 +27,7 @@ SYSTEM = """You are the mind of an avatar in VRChat. You see one first-person fr
 Choose ONE next intention. Reply with a single JSON object only:
 {
   "observation": "<one sentence: what you see>",
-  "heard": "<the words in a chat bubble above another avatar's head, copied exactly, else null>",
+  "heard": "<the words in a chat bubble above another avatar's head, or a line under Heard, copied exactly, else null>",
   "new_errand": "<if those words ask you to do something: the task in a few words, else null>",
   "requester": "<who asked: the name on their nameplate if readable, and 2-4 words on their look>",
   "reply": "<a short chat answer to those words, sent right away, else null>",
@@ -61,7 +63,10 @@ RT icon and a name means your crosshair is on something you can grab or use.
 "crouch" toggles crouching.
 Other players talk by typing: their words appear in a chat bubble above their head and nameplate.
 Read every bubble you can see; a bubble stays up for a while after it is written, so answer each
-one once. When someone asks you for something, answer in "reply" and take it
+one once. They also talk by voice: what you heard since your last decision is listed under
+"Heard", written down by a speech model, so a word or name can come out wrong. Heard words count
+like a bubble; the speaker is usually the person nearest you or facing you. Ignore song lyrics
+and talk not meant for you. When someone asks you for something, answer in "reply" and take it
 on as your errand; it is listed under "Errand" until it is done. Work on it over the next
 decisions, starting right away (no need to walk over to them first). To bring someone an object:
 "grab" it if you can see it, else "look_around" with the object as "target"; once you hold it,
@@ -139,11 +144,13 @@ class Memory:
         self.events.append(text)
         del self.events[: -self.limit]
 
-    def prompt(self, goal: str, body: str | None = None, errand: str | None = None) -> str:
+    def prompt(self, goal: str, body: str | None = None, errand: str | None = None,
+               heard: list[tuple[float, str]] | None = None) -> str:
         recent = "\n".join(f"- {e}" for e in self.events) or "- (nothing yet)"
         errand_line = f"Errand: {errand}\n" if errand else ""
         body_line = f"Body: {body}\n" if body else ""
-        return f"Goal: {goal}\n{errand_line}{body_line}Recent:\n{recent}\nWhat next?"
+        heard_lines = "".join(f'Heard {age:.0f} s ago: "{text}"\n' for age, text in heard or [])
+        return f"Goal: {goal}\n{errand_line}{body_line}{heard_lines}Recent:\n{recent}\nWhat next?"
 
 
 def stalled(seen: list[tuple[float, float]]) -> bool:
@@ -159,6 +166,15 @@ def stalled(seen: list[tuple[float, float]]) -> bool:
 
 def _key(text: str) -> str:
     return " ".join(text.lower().split())
+
+
+def _said(words: str, voice: list[str] | None) -> bool:
+    """Whether Muse Spark's copy of the words came from what was heard rather than a bubble
+    (its copy can drop punctuation or join two utterances)."""
+    def bare(t: str) -> str:
+        return " ".join(re.sub(r"[^\w\s]", " ", t.lower()).split())
+    w = bare(words)
+    return bool(w) and any(v and (v in w or w in v) for v in map(bare, voice or []))
 
 
 @dataclass
@@ -190,6 +206,8 @@ class Errands:
             self.heard.add(_key(task))
         self.current = {"task": task, "for": str(d.get("requester") or "the person who asked"),
                         "heard": words or None}
+        if words and _said(words, d.get("voice")):
+            self.current["spoken"] = True
         return fresh, self.current
 
     def done(self) -> None:
@@ -199,14 +217,15 @@ class Errands:
         if not self.current:
             return None
         e = self.current
-        asked = f", who wrote {e['heard']!r}" if e.get("heard") else ""
+        how = "said" if e.get("spoken") else "wrote"
+        asked = f", who {how} {e['heard']!r}" if e.get("heard") else ""
         missed = f"; looked all around {e['missed']} time(s) without finding it" if e.get("missed") else ""
         return f"{e['task']} (asked by {e['for']}{asked}){missed}"
 
 
 class Agent:
     def __init__(self, settings: Settings, goal: str, dry_run: bool = False, log_dir: Path | None = None,
-                 locomotion: str = "pad"):
+                 locomotion: str = "pad", hear: bool = True):
         self.api = MetaClient(settings)
         self.dry_run = dry_run
         self.cam = Camera()
@@ -217,6 +236,8 @@ class Agent:
         except OSError as e:  # port taken by another OSC app
             print(f"[senses] OSC output not available on {settings.osc_in_port}: {e}")
             self.senses = None
+        # Voices around the avatar, as VRChat plays them, written down by Muse Voice Transcribe.
+        self.ears: Ears | None = Ears(settings).start() if hear else None
         self.steer_params = SteerParams(fov_v_deg=settings.fov_v_deg)
         self.goal = goal
         self.memory = Memory()
@@ -267,12 +288,18 @@ class Agent:
             for event in self.senses.take_events():
                 self.memory.add(f"felt: {event}")
             body = self.senses.summary()
+        heard = self.ears.take() if self.ears else []
+        now = time.time()
+        prompt = self.memory.prompt(self.goal, body, self.errands.describe(),
+                                    heard=[(now - h.t, h.text) for h in heard])
+        for h in heard:  # later decisions see it under Recent
+            self.memory.add(f"heard someone say {h.text!r}")
         # The people detector runs while Muse Spark thinks, so it costs no extra time.
         people = self.pool.submit(self.find_people, frame)
         # The ~5 s decision is visible in-world: Thinking on the avatar, typing dots in chat.
         self.body.thinking(True)
         try:
-            reply = self.api.see(frame, SYSTEM, self.memory.prompt(self.goal, body, self.errands.describe()))
+            reply = self.api.see(frame, SYSTEM, prompt)
         finally:
             self.body.thinking(False)
         try:
@@ -281,6 +308,8 @@ class Agent:
             d = {"intent": "wait", "why": "unparseable reply", "raw": reply[:300]}
         self.people = people.result()
         d["people"] = [[p.x1, p.y1, p.x2, p.y2] for p in self.people]
+        if self.ears:
+            d["voice"] = [h.text for h in heard]  # for the errand and the replay
         if d.get("mood"):
             self.body.mood(str(d["mood"]))
         self.read_chat(d)
@@ -675,6 +704,8 @@ class Agent:
     def tick(self) -> None:
         self.step += 1
         self.wait_for_focus()
+        if self.ears:  # someone is mid-sentence: let them finish before looking and deciding
+            self.ears.wait_until_quiet()
         frame = self.cam.grab()
         d = self.decide(frame)
         self.log(frame, {"phase": "decide", **d})
@@ -730,6 +761,8 @@ class Agent:
             self.body.close()
             if self.senses:
                 self.senses.close()
+            if self.ears:
+                self.ears.close()
             self.api.close()
 
 
@@ -740,10 +773,12 @@ def main() -> None:
     ap.add_argument("--dry-run", action="store_true", help="print controller/OSC output instead of sending it")
     ap.add_argument("--input", choices=["pad", "osc"], default="pad",
                     help="locomotion via a virtual Xbox pad (default) or VRChat's OSC /input axes")
+    ap.add_argument("--no-hear", action="store_true",
+                    help="do not listen to voices (Muse Voice Transcribe on the PC's audio output)")
     ap.add_argument("--log-dir", type=Path, default=Path("runs") / time.strftime("%Y%m%d-%H%M%S"))
     args = ap.parse_args()
     Agent(Settings.from_env(), args.goal, dry_run=args.dry_run, log_dir=args.log_dir,
-          locomotion=args.input).run(args.steps)
+          locomotion=args.input, hear=not args.no_hear).run(args.steps)
 
 
 if __name__ == "__main__":

@@ -9,6 +9,9 @@ dependencies = [
     "numpy>=1.24",
     "pillow>=10.1",
     "python-osc>=1.8",
+    # Hearing: the speaker loopback, streamed to Muse Voice Transcribe over a WebSocket.
+    "soundcard>=0.4.4",
+    "websockets>=13",
     # Needs the ViGEmBus driver; install with VGAMEPAD_SKIP_VIGEMBUS_INSTALL=true to skip its bundled installer.
     "vgamepad==0.2.0; sys_platform == 'win32'",
 ]
@@ -19,6 +22,7 @@ replay = ["imageio-ffmpeg>=0.5"]
 
 [project.scripts]
 muse-body = "muse_body.agent:main"
+muse-hear = "muse_body.hearing:main"
 muse-probe = "muse_body.probe:main"
 muse-replay = "muse_body.replay:main"
 
