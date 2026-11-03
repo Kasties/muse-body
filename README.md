@@ -111,7 +111,7 @@ muse-hear --seconds 30                # play a video with speech: prints each se
 2. Turn on OSC: open the Action Menu (R), then Options → OSC → Enabled. The chatbox and the avatar
    parameters go over OSC.
 3. Meet your second person in a private or friends instance. The demo used the café world
-   [咖啡厅 v1.31](https://vrchat.com/home/world/wrld_4432ea9b-729c-46e3-8eaf-846aa0a37fdd),
+   [咖啡厅 v1.31](https://vrchat.com/home/world/wrld_30251b70-8af3-4280-9d46-143e926da217),
    where the menus on the counter can be picked up.
 
 ### 5. Run the agent
