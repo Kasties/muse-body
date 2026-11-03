@@ -96,6 +96,10 @@ MARK = (255, 0, 200)  # numbered boxes Muse Spark picks from
 OBJECT_NEAR = 0.25
 # Told to Muse Spark under Body without the gamepad (--input osc), so it does not plan on hands.
 NO_PAD = "no gamepad, so you cannot grab, give, drop, crouch or show hand signs"
+# Told under Body while carrying: Muse Spark took the agent's own furry arm at the right edge
+# of the view for the requester and twice tried to hand it the clipboard (demo1, 11-03).
+HOLDING = ("while you hold something, your own right arm reaches into the view from the right: "
+           "fur or a hand at the right edge is you, not another person")
 # An object this many degrees below the view centre gets looked down at while walking up to it.
 LOW_DEG = 10.0
 
@@ -298,8 +302,8 @@ class Agent:
             for event in self.senses.take_events():
                 self.memory.add(f"felt: {event}")
             body = self.senses.summary()
-        if not self.body.has_pad:
-            body = f"{body}; {NO_PAD}" if body else NO_PAD
+        notes = [body, None if self.body.has_pad else NO_PAD, HOLDING if self.holding else None]
+        body = "; ".join(n for n in notes if n) or None
         heard = self.ears.take() if self.ears else []
         now = time.time()
         prompt = self.memory.prompt(self.goal, body, self.errands.describe(),
@@ -490,6 +494,12 @@ class Agent:
         """Walk to a person and hand over what the right hand holds."""
         if not self.can(f"hand anything to {target}"):
             return
+        if not self.people:
+            # Only our own arm in view (demo1, 11-03: two approaches to the fur at the right edge
+            # found nobody). Find them first; the next decision hands it over.
+            self.memory.add(f"looked around for {target}: no one was in view to hand it to")
+            self.scan()
+            return
 
         def hand_over() -> None:
             line = str(d.get("say") or "Here you go!")
@@ -625,6 +635,13 @@ class Agent:
         60 degree turn took ~5 s each (10-28). Muse Spark is asked only when SAM matches the
         object, to tell it from pictures of it, and the scan then turns to face it."""
         first = self.search_turn() if target is None else step_deg
+        if target is None and self.holding:
+            # While carrying, the held object and our own arm cover the middle and the right of
+            # the view, and only ~37 degrees on the left stay clear. Steps of 45 (and a first
+            # turn of 50) moved the requester from the left edge straight behind the clipboard,
+            # and the scan saw nobody (demo1 step 5, 11-03). At 30, everyone passes the clear part.
+            step_deg = min(step_deg, 30.0)
+            first = math.copysign(step_deg, first)
         direction = math.copysign(1.0, first)
         turned = 0.0
         ruled_out = 0
