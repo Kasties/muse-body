@@ -35,6 +35,8 @@ class FakeApi:
 
 
 class FakeBody:
+    has_pad = True
+
     def __init__(self):
         self.turns, self.looks = [], []
 

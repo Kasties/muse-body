@@ -123,7 +123,8 @@ class PadLocomotion:
         except Exception as e:  # ViGEmBus missing raises from the client DLL
             raise SystemExit(
                 f"virtual gamepad unavailable ({e}). Install the ViGEmBus driver "
-                "(https://github.com/nefarius/ViGEmBus/releases) or run with --input osc."
+                "(https://github.com/nefarius/ViGEmBus/releases), or run with --input osc "
+                "(walks, turns and talks, but cannot grab or show hand signs)."
             ) from e
         self.pad.reset()
         self.pad.update()
@@ -181,6 +182,12 @@ class Body:
         self.loco = PadLocomotion(dry_run) if locomotion == "pad" else OscLocomotion(self.osc)
         self.pitch_deg = 0.0  # net look_by since start, for level()
 
+    @property
+    def has_pad(self) -> bool:
+        """Grabbing, dropping, crouching and hand signs are gamepad buttons: VRChat's desktop
+        OSC input (--input osc) only moves, turns and jumps."""
+        return isinstance(self.loco, PadLocomotion)
+
     def axes(self, forward: float = 0.0, strafe: float = 0.0, turn: float = 0.0, pitch: float = 0.0) -> None:
         """Hold the movement and look axes (each -1..1) until the next call."""
         self.loco.set(forward, strafe, turn, pitch)
@@ -208,7 +215,7 @@ class Body:
 
     def look_by(self, degrees: float, min_rate: float = 40.0, max_seconds: float = 0.4) -> None:
         """Pitch the view by about this many degrees (positive is up), open loop. Pad only."""
-        if abs(degrees) < 0.5 or not isinstance(self.loco, PadLocomotion):
+        if abs(degrees) < 0.5 or not self.has_pad:
             return
         rate = min(self.loco.max_pitch_rate, max(min_rate, abs(degrees) / max_seconds))
         self.axes(pitch=self.loco.pitch_stick(math.copysign(rate, degrees)))
@@ -250,7 +257,7 @@ class Body:
     def gesture(self, name: str, hand: str = "right", hold: float = 0.5) -> None:
         """Select a hand gesture: RB held, stick pushed to the gesture's direction.
         The gesture stays until another is selected; 'neutral' (stick up) resets it."""
-        if not isinstance(self.loco, PadLocomotion):
+        if not self.has_pad:
             raise ValueError("gestures need the pad (GestureLeft/Right are read-only over OSC)")
         index = GESTURES.index(name)
         # 0 is straight up, then clockwise in 45 degree steps (measured: NE=1 ... NW=7).

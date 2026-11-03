@@ -94,6 +94,8 @@ MARK = (255, 0, 200)  # numbered boxes Muse Spark picks from
 # seen. Live, right picks were within 0.07 of Muse Spark's point and moved at most 0.2 between
 # frames; picking the nearest box anywhere jumped to a wall menu board 0.32 and 0.64 away (11-02).
 OBJECT_NEAR = 0.25
+# Told to Muse Spark under Body without the gamepad (--input osc), so it does not plan on hands.
+NO_PAD = "no gamepad, so you cannot grab, give, drop, crouch or show hand signs"
 # An object this many degrees below the view centre gets looked down at while walking up to it.
 LOW_DEG = 10.0
 
@@ -282,12 +284,22 @@ class Agent:
             with open(self.log_dir / "events.jsonl", "a", encoding="utf-8") as f:
                 f.write(json.dumps({"step": self.step, "t": time.time(), "phase": "act", "act": text}) + "\n")
 
+    def can(self, what: str) -> bool:
+        """Whether the body has the buttons to grab, hand over, drop, crouch or show a hand sign.
+        Without the gamepad (--input osc) the action is skipped and remembered instead."""
+        if self.body.has_pad:
+            return True
+        self.memory.add(f"could not {what}: no gamepad (--input osc)")
+        return False
+
     def decide(self, frame: Image.Image) -> dict:
         body = None
         if self.senses:
             for event in self.senses.take_events():
                 self.memory.add(f"felt: {event}")
             body = self.senses.summary()
+        if not self.body.has_pad:
+            body = f"{body}; {NO_PAD}" if body else NO_PAD
         heard = self.ears.take() if self.ears else []
         now = time.time()
         prompt = self.memory.prompt(self.goal, body, self.errands.describe(),
@@ -451,6 +463,8 @@ class Agent:
         return det
 
     def grab(self, target: str, hint: tuple[float, float] | None) -> None:
+        if not self.can(f"pick up {target!r}"):
+            return
         # Small objects never fill half the view; ~22% of the frame height is within reach
         # (cafe menu picked up at 27%, 10-28).
         if not self.approach(target, hint=hint, arrive_height=0.22):
@@ -474,6 +488,9 @@ class Agent:
 
     def give(self, target: str, hint: tuple[float, float] | None, d: dict) -> None:
         """Walk to a person and hand over what the right hand holds."""
+        if not self.can(f"hand anything to {target}"):
+            return
+
         def hand_over() -> None:
             line = str(d.get("say") or "Here you go!")
             self.body.say(line)
@@ -687,8 +704,13 @@ class Agent:
             self.body.say(str(d["say"]))
             self.act(f"said {d['say']!r}")
         if d.get("gesture") in GESTURES:
-            self.body.gesture(str(d["gesture"]))
-            self.act(f"right hand now shows {d['gesture']}")
+            self.sign(str(d["gesture"]))
+
+    def sign(self, name: str) -> None:
+        """Show a hand sign with the right hand; it stays until the next one."""
+        if self.can(f"show {name}"):
+            self.body.gesture(name)
+            self.act(f"right hand now shows {name}")
 
     def wait_for_focus(self, timeout: float = 120.0) -> None:
         """VRChat ignores the gamepad while its window is not focused (11-02: the first six
@@ -730,24 +752,24 @@ class Agent:
             self.body.emote(1)
             self.act(f"waved{' and said ' + repr(d['say']) if d.get('say') else ''}")
             if d.get("gesture") in GESTURES:
-                self.body.gesture(str(d["gesture"]))
-                self.act(f"right hand now shows {d['gesture']}")
+                self.sign(str(d["gesture"]))
         elif intent == "say" and d.get("say"):
             self.body.say(str(d["say"]))
             self.act(f"said {d['say']!r}")
         elif intent == "gesture" and d.get("gesture") in GESTURES:
-            self.body.gesture(str(d["gesture"]))
-            self.act(f"right hand now shows {d['gesture']}")
+            self.sign(str(d["gesture"]))
         elif intent == "grab" and d.get("target"):
             self.grab(str(d["target"]), hint)
         elif intent == "give" and d.get("target"):
             self.give(str(d["target"]), hint, d)
         elif intent == "drop":
-            self.let_go()
-            self.act("dropped what was in the right hand")
+            if self.can("let go"):
+                self.let_go()
+                self.act("dropped what was in the right hand")
         elif intent == "crouch":
-            self.body.crouch_toggle()
-            self.act("toggled crouch")
+            if self.can("crouch"):
+                self.body.crouch_toggle()
+                self.act("toggled crouch")
         else:
             self.memory.add("waited")
             time.sleep(1.0)
@@ -772,7 +794,8 @@ def main() -> None:
     ap.add_argument("--steps", type=int, default=20)
     ap.add_argument("--dry-run", action="store_true", help="print controller/OSC output instead of sending it")
     ap.add_argument("--input", choices=["pad", "osc"], default="pad",
-                    help="locomotion via a virtual Xbox pad (default) or VRChat's OSC /input axes")
+                    help="locomotion via a virtual Xbox pad (default) or VRChat's OSC /input axes "
+                         "(osc: no grabbing, crouching or hand signs)")
     ap.add_argument("--no-hear", action="store_true",
                     help="do not listen to voices (Muse Voice Transcribe on the PC's audio output)")
     ap.add_argument("--log-dir", type=Path, default=Path("runs") / time.strftime("%Y%m%d-%H%M%S"))
