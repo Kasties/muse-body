@@ -110,7 +110,7 @@ if ($hasKey -and -not $SkipApiCheck -and (Test-Path $frame)) {
     Step "Checking the API: SAM 3.1 and Muse Spark on $frame"
     & (Join-Path $PSScriptRoot ".venv\Scripts\muse-probe.exe") $frame --phrase menu
     if ($LASTEXITCODE -ne 0) { Fail "SAM 3.1 call failed: check the key in .env" }
-    & (Join-Path $PSScriptRoot ".venv\Scripts\muse-probe.exe") $frame --goal "Find the café menu."
+    & (Join-Path $PSScriptRoot ".venv\Scripts\muse-probe.exe") $frame --goal "Find the cafe menu."
     if ($LASTEXITCODE -ne 0) { Fail "Muse Spark call failed: check the key in .env" }
 }
 
