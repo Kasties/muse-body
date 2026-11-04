@@ -104,36 +104,44 @@ You need:
   a second person in the same instance to talk to it, such as a friend or your own second
   account on another PC
 
-### 1. Install
+### 1–2. Install and add your API key (one step)
 
 In PowerShell:
 
 ```powershell
 git clone https://github.com/Kasties/muse-body.git
 cd muse-body
-py -m venv .venv
+powershell -ExecutionPolicy Bypass -File setup.ps1
 .venv\Scripts\Activate.ps1
-pip install -e ".[dev,replay]"
 ```
+
+[`setup.ps1`](setup.ps1) finds Python 3.10 or newer, makes `.venv`, installs muse-body, creates
+`.env` and asks for your Meta Model API key (typed hidden, saved only to the git-ignored
+`.env`). It then runs the offline tests and, with a key, makes two real API calls on a frame
+from the logged demo run: SAM 3.1 boxes the café menu, and Muse Spark decides what to do. Add
+`-SkipGamepadDriver` to install without the virtual gamepad driver (below).
 
 If PowerShell refuses to run `Activate.ps1`, run `Set-ExecutionPolicy -Scope Process RemoteSigned`
-and activate again.
+and activate again. Run every command from the repo folder, because they read `.env` from the
+current folder.
 
-The virtual gamepad (vgamepad) needs the ViGEmBus driver. If the driver is missing,
-`pip install` opens its installer: accept it for the VRChat run. To install without the driver,
-set `$env:VGAMEPAD_SKIP_VIGEMBUS_INSTALL = "true"` before `pip install`. The checks in step 3
-work without it, and so does `muse-body --input osc`, minus grabbing and hand signs. You can add
-the driver later from its [releases page](https://github.com/nefarius/ViGEmBus/releases).
+The virtual gamepad (vgamepad) needs the ViGEmBus driver. If the driver is missing, the install
+opens its installer: accept it for the VRChat run. The checks in step 3 work without it, and so
+does `muse-body --input osc`, minus grabbing and hand signs. You can add the driver later from
+its [releases page](https://github.com/nefarius/ViGEmBus/releases).
 
-### 2. Add your API key
+<details>
+<summary>The same by hand</summary>
 
 ```powershell
+py -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -e ".[dev,replay]"   # $env:VGAMEPAD_SKIP_VIGEMBUS_INSTALL = "true" first to skip the driver
 copy .env.example .env
-notepad .env
+notepad .env                     # set MODEL_API_KEY= to your key
 ```
 
-Set `MODEL_API_KEY=` to your key and save. Run every command from the repo folder, because they
-read `.env` from the current folder.
+</details>
 
 ### 3. Check the models without VRChat
 
@@ -201,7 +209,7 @@ muse-calls runs\<timestamp>              # writes runs\<timestamp>\CALLS.md
 
 | You see | What to do |
 |---|---|
-| `MODEL_API_KEY is not set` | Create `.env` (step 2) and run from the repo folder |
+| `MODEL_API_KEY is not set` | Run `setup.ps1` again, or set it in `.env`, and run from the repo folder |
 | `virtual gamepad unavailable` | Install the [ViGEmBus driver](https://github.com/nefarius/ViGEmBus/releases), or run with `--input osc`: it then walks, turns and talks, but cannot pick things up or show hand signs |
 | `waiting for the VRChat window to be focused` | Click into VRChat; the agent looks for a window titled "VRChat" |
 | `[senses] OSC output not available on 9001` | Another OSC app holds the port; close it. The agent runs on without body senses |
@@ -287,6 +295,7 @@ Muse Spark as something the body felt. An avatar without these parameters works 
 | `src/muse_body/agent.py` | The decide → ground → move loop with a short memory |
 | `src/muse_body/replay.py` | Run log → annotated replay video, with the API calls as they finish |
 | `src/muse_body/calls.py` | `muse-calls`: a run's API calls as a table (`CALLS.md`), from `api_calls.jsonl` or derived from `events.jsonl` |
+| `setup.ps1` | One-step setup: venv, install, `.env` with the key, offline tests, two real API calls |
 | `src/muse_body/probe.py` | `muse-probe`: one image through Muse Spark and SAM 3.1, to check the setup |
 | `tests/` | Offline tests with stand-ins for the models, the gamepad and VRChat |
 | `avatar/` | The Muse avatar: the VRChat FBX, textures and fur shader, and the Blender file |
