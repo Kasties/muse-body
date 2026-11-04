@@ -1,5 +1,11 @@
 # muse-body
 
+![Left: the Muse avatar, cheering with both arms up, in its Blender render. Right: what the agent saw in VRChat as it handed the café menu over to the person who asked for it, who is also wearing the Muse avatar.](docs/muse_banner.jpg)
+
+<sub>Left: the Muse avatar the agent wears, which I modeled for it during the hackathon
+([files](avatar)). Right: the agent's own view as it hands over the café menu it was asked for
+out loud ([that run's log](demo_runs/demo6_take/CALLS.md)).</sub>
+
 An embodied agent for VRChat built on Meta's models. Ask it for something, out loud or in
 VRChat's chatbox, and it answers, finds the thing, picks it up and brings it to you. It moves
 with a virtual gamepad, the way a player does.
