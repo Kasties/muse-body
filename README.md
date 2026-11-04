@@ -289,6 +289,7 @@ Muse Spark as something the body felt. An avatar without these parameters works 
 | `src/muse_body/calls.py` | `muse-calls`: a run's API calls as a table (`CALLS.md`), from `api_calls.jsonl` or derived from `events.jsonl` |
 | `src/muse_body/probe.py` | `muse-probe`: one image through Muse Spark and SAM 3.1, to check the setup |
 | `tests/` | Offline tests with stand-ins for the models, the gamepad and VRChat |
+| `avatar/` | The Muse avatar: the VRChat FBX, textures and fur shader, and the Blender file |
 | `demo_runs/` | The logged live runs shown in the demo video: frames, `events.jsonl`, `CALLS.md` |
 
 ## Limits
@@ -300,7 +301,8 @@ Muse Spark as something the body felt. An avatar without these parameters works 
 
 ## Credits
 
-The Muse avatar the agent wears was modeled by Kasties during the hackathon. The voice-over in
+The Muse avatar the agent wears was modeled by Kasties during the hackathon; its files are in
+[`avatar/`](avatar). The voice-over in
 the demo video and the requester's voice in the voice errand are Kasties too. The live runs took
 place in VRChat community worlds; the café is 咖啡厅 v1.31. The worlds and the other avatars
 belong to their creators.
