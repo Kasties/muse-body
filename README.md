@@ -40,16 +40,16 @@ All three run through the Meta Model API (`https://api.meta.ai/v1` by default, `
 Each run below is in [`demo_runs/`](demo_runs) with its log, the frames the models were sent,
 and a table of the API calls it made (see [Logged runs and API calls](#logged-runs-and-api-calls)).
 
-- **Voice errand (Nov 4, café world, the demo video):** the requester said "Hello Muse, how are
+- **Voice errand (Nov 3, 23:39 UTC, café world, the demo video):** the requester said "Hello Muse, how are
   you doing?" and then asked out loud for the café menu. It answered in chat, turned 180° until
   SAM 3.1 matched two menus, and Muse Spark picked the clipboard on the counter over the board on
   the wall. It walked up, grabbed it, checked the HUD's "Drop" prompt to see that the hand held
   it, turned back to find the requester and handed it over with "Here's the menu you asked for!"
   Asked for a joke, it told one. 11 decisions in 2 minutes:
   [`demo_runs/demo6_take`](demo_runs/demo6_take/CALLS.md).
-- **Typed errand (Nov 2, café world):** the same errand from a chat message, "can you bring me
+- **Typed errand (Nov 2, 02:08 UTC, café world):** the same errand from a chat message, "can you bring me
   the menu?": [`demo_runs/errand3`](demo_runs/errand3/CALLS.md).
-- **Greeting (Oct 29, NPC world):** found a person walking around, followed them, then said
+- **Greeting (Oct 29, 00:56 UTC, NPC world):** found a person walking around, followed them, then said
   "Hi there!" with a thumbs-up and waved: [`demo_runs/npc_run6`](demo_runs/npc_run6/CALLS.md).
 - **Not yet:** a pen from the tray under the café whiteboard. From across the room a pen is
   about 5 pixels wide and SAM 3.1 does not find it. After two full circles the agent now says
