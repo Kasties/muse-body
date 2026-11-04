@@ -26,27 +26,69 @@ commit history shows the build step by step.
 
 ## Meta models in the loop
 
-All three run through the Meta Model API; no other model is used.
+All three run through the Meta Model API (`https://api.meta.ai/v1` by default, `MUSE_BASE_URL` in
+`.env`). No other model is used: steering, the scan and the errand bookkeeping are plain code.
 
-| Model | What it does here |
-|---|---|
-| Muse Spark 1.3 | Looks at each first-person frame and picks the next intention (approach, look around, grab, give, say, …) with a target phrase and a point; reads chat bubbles and nameplates; picks the real object among SAM's matches; sets the avatar's mood |
-| SAM 3.1 | Finds the target phrase again in every frame of a move, so steering works from fresh boxes; finds the people in view at every decision |
-| Muse Voice Transcribe | Writes down what people say near the avatar, one finished sentence at a time (realtime, turn detection) |
+| Model | Endpoint | What it does here |
+|---|---|---|
+| Muse Spark 1.3 | `POST /chat/completions` (one JPEG frame + text) | Picks the next intention (approach, look around, grab, give, say, wait, …) with a target phrase, a point on the frame and what to say; reads chat bubbles and nameplates; picks the real object among SAM's numbered matches; checks the HUD after a grab; sets the avatar's mood |
+| SAM 3.1 | `POST /responses` (a noun phrase + one JPEG frame) | Boxes the target phrase in every frame of a move, so steering works from fresh boxes; boxes the people in view at every decision and at every step of a scan |
+| Muse Voice Transcribe | `wss /asr/realtime` (16-bit PCM, 24 kHz, endpointing) | Writes down what people say near the avatar, one finished utterance at a time |
 
 ## What it has done live
 
-- **Greeting (Oct 29, NPC world):** found a person, walked up, stayed, said "Hi there!" with a
-  thumbs-up and waved.
-- **Errand (Nov 2, café world):** a player typed "can you bring me the menu?" It answered, found
-  the menu on the counter rather than the menu boards on the wall, grabbed it, turned to find
-  the player, walked over and handed it to them with "Here's the menu!"
-- **Voice (Nov 3, not live yet):** Muse Voice Transcribe wrote down speech played on the PC.
-  Given those words on logged café frames, Muse Spark took a spoken request on as an errand and
-  did not answer a lecture playing on the PC (4 of 4 right). The first live run is next.
+Each run below is in [`demo_runs/`](demo_runs) with its log, the frames the models were sent,
+and a table of the API calls it made (see [Logged runs and API calls](#logged-runs-and-api-calls)).
+
+- **Voice errand (Nov 4, café world, the demo video):** the requester said "Hello Muse, how are
+  you doing?" and then asked out loud for the café menu. It answered in chat, turned 180° until
+  SAM 3.1 matched two menus, and Muse Spark picked the clipboard on the counter over the board on
+  the wall. It walked up, grabbed it, checked the HUD's "Drop" prompt to see that the hand held
+  it, turned back to find the requester and handed it over with "Here's the menu you asked for!"
+  Asked for a joke, it told one. 11 decisions in 2 minutes:
+  [`demo_runs/demo6_take`](demo_runs/demo6_take/CALLS.md).
+- **Typed errand (Nov 2, café world):** the same errand from a chat message, "can you bring me
+  the menu?": [`demo_runs/errand3`](demo_runs/errand3/CALLS.md).
+- **Greeting (Oct 29, NPC world):** found a person walking around, followed them, then said
+  "Hi there!" with a thumbs-up and waved: [`demo_runs/npc_run6`](demo_runs/npc_run6/CALLS.md).
 - **Not yet:** a pen from the tray under the café whiteboard. From across the room a pen is
   about 5 pixels wide and SAM 3.1 does not find it. After two full circles the agent now says
   it could not find one (checked offline).
+
+## Logged runs and API calls
+
+Every run writes a folder, and nothing in it is edited afterwards:
+
+| File | What it holds |
+|---|---|
+| `00001.jpg`, … | Each frame that was sent to Muse Spark or SAM 3.1, as captured from the VRChat window (1280×720) |
+| `events.jsonl` | One line per step event, with its Unix time `t`, the frame, and what the models returned: Muse Spark's observation, reasoning, intent, target, reply and gesture; SAM's boxes and confidences; the words Muse Voice Transcribe heard |
+| `run.json` | The goal and the start time |
+| `api_calls.jsonl` | One line per API call, written by the client as each call finishes (runs from Nov 4 on, below) |
+| `CALLS.md` | The calls as a table, made by `muse-calls <run folder>` |
+
+**`api_calls.jsonl`** (from commit 096bee3 on) records per call: when it started (`t`, Unix
+seconds), the endpoint and model, how long it took, the HTTP status or the error, the size of
+the image and prompt sent, and what the API returned to identify the call: the response `id`,
+`created`, token `usage` and any request-id headers. Muse Voice Transcribe adds a line per
+realtime session, with the `sessionId` the server assigned, and a line per finished utterance
+with its transcript. The API key is never written (a test checks this). These ids, times and
+counts can be checked against the Meta developer dashboard's usage page, and the replay video
+shows the calls in its bottom-right corner as they finish.
+
+**The runs in `demo_runs/`** were recorded before that log existed, so their `CALLS.md` is
+derived from `events.jsonl`: each logged event comes from one code path in
+[`agent.py`](src/muse_body/agent.py), and [`calls.py`](src/muse_body/calls.py) lists the calls
+that path makes (a decision is one Muse Spark call plus one SAM 3.1 "character" call, a scan
+step is one or two SAM calls plus a Muse Spark pick when there are matches, and so on). Derived
+rows are marked as such: they carry no request ids or token counts, failed calls are missing,
+and the counts are lower bounds. The frame named in each row is the image that call was sent.
+
+| Run | When (UTC) | Muse Spark | SAM 3.1 | Muse Voice Transcribe |
+|---|---|---|---|---|
+| [demo6_take](demo_runs/demo6_take/CALLS.md), voice errand | 2026-11-03 23:39–23:41 | 13 | 33 | 4 utterances |
+| [errand3](demo_runs/errand3/CALLS.md), typed errand | 2026-11-02 02:08–02:10 | 15 | 52 | not built yet |
+| [npc_run6](demo_runs/npc_run6/CALLS.md), greeting | 2026-10-29 00:56–00:57 | 6 | 26 | not built yet |
 
 ## Run it yourself
 
@@ -139,8 +181,8 @@ with Ctrl+C. Without `--goal` the agent looks for someone, walks up and greets t
 
 ### 6. Watch the replay
 
-Each run saves its frames, `events.jsonl` and `run.json` to `runs\<timestamp>\`. To turn a run
-into a 1080p video with the SAM boxes, people boxes, Muse Spark's pointing hint, its observation
+Each run saves its frames, `events.jsonl`, `api_calls.jsonl` and `run.json` to
+`runs\<timestamp>\` (or to `--log-dir`). To turn a run into a 1080p video with the SAM boxes, people boxes, Muse Spark's pointing hint, its observation
 and reasoning, and the actions it took drawn in:
 
 ```powershell
@@ -148,16 +190,12 @@ muse-replay runs\<timestamp>             # writes runs\<timestamp>\replay.mp4
 muse-replay runs\<timestamp> --still 12  # one frame as a PNG, for checking
 ```
 
-### Checking which API calls a run made
+To list the API calls a run made (from its `api_calls.jsonl`, see
+[Logged runs and API calls](#logged-runs-and-api-calls)):
 
-Every call to the Meta Model API is written to `runs\<timestamp>\api_calls.jsonl` as it
-finishes, one JSON line each: when it started (`t`, Unix seconds), the endpoint and model, how
-long it took, the HTTP status, and what the API sent back to identify it (the response `id`,
-`created`, token `usage`, and any request-id headers). Muse Voice Transcribe adds a line per
-realtime session, with the `sessionId` the server gave it, and a line per finished transcript.
-The key is never written. The replay shows these calls in its bottom-right corner as they
-finish, so each decision on screen can be matched to the call behind it, and the times and
-counts can be checked against the usage page of the Meta developer dashboard.
+```powershell
+muse-calls runs\<timestamp>              # writes runs\<timestamp>\CALLS.md
+```
 
 ### If something goes wrong
 
@@ -171,6 +209,28 @@ counts can be checked against the usage page of the Meta developer dashboard.
 | It answers a video or music | Pause other audio, or run with `--no-hear` |
 
 ## How it works
+
+### One step, call by call
+
+1. **Capture.** The VRChat window is captured and scaled to 1280×720.
+2. **Decide (~5 s).** Muse Spark 1.3 gets that frame as a JPEG (quality 85) with the goal, a short
+   memory of recent steps, the errand in progress, the body senses and anything heard since the
+   last step (`reasoning_effort: low`, `max_tokens: 4096`). It replies with JSON: what it sees,
+   why, an intent, a target phrase, a point on the frame (0–1000), what to say or reply, a
+   gesture and a mood. At the same time SAM 3.1 boxes every "character" in the frame, so Muse
+   Spark's point can be snapped onto a real person.
+3. **Act.** The intent runs as plain code:
+   - **approach / give:** each frame, SAM 3.1 boxes the target phrase (shorter tails of the
+     phrase if the full one finds nothing). The box's centre gives a bearing from the 70°
+     vertical field of view; the body turns by it and walks. It has arrived when the box is 40%
+     of the frame height for a person, or 22% for an object to pick up. At most 12 frames.
+   - **look_around:** turn in 45° steps (30° while carrying) and run only SAM 3.1 at each, about
+     1 s a step, until a person, or the target object, is in view.
+   - **grab:** approach, put the object under the screen-centre crosshair with SAM boxes, press
+     grab, then ask Muse Spark whether the HUD shows VRChat's "Drop" prompt.
+   - **say / wave / wait:** chatbox text over OSC and hand signs on the gamepad.
+4. **Log.** Every frame used is saved with its `events.jsonl` line, and every API call with its
+   `api_calls.jsonl` line. Then the loop starts again at step 1.
 
 ### Errands
 
@@ -225,9 +285,11 @@ Muse Spark as something the body felt. An avatar without these parameters works 
 | `src/muse_body/hearing.py` | The PC's audio output → Muse Voice Transcribe (realtime, turn detection) → what was said |
 | `src/muse_body/capture.py` | VRChat window capture |
 | `src/muse_body/agent.py` | The decide → ground → move loop with a short memory |
-| `src/muse_body/replay.py` | Run log → annotated replay video |
+| `src/muse_body/replay.py` | Run log → annotated replay video, with the API calls as they finish |
+| `src/muse_body/calls.py` | `muse-calls`: a run's API calls as a table (`CALLS.md`), from `api_calls.jsonl` or derived from `events.jsonl` |
 | `src/muse_body/probe.py` | `muse-probe`: one image through Muse Spark and SAM 3.1, to check the setup |
 | `tests/` | Offline tests with stand-ins for the models, the gamepad and VRChat |
+| `demo_runs/` | The logged live runs shown in the demo video: frames, `events.jsonl`, `CALLS.md` |
 
 ## Limits
 
@@ -238,8 +300,10 @@ Muse Spark as something the body felt. An avatar without these parameters works 
 
 ## Credits
 
-The live runs took place in VRChat community worlds; the café is 咖啡厅 v1.31. The worlds and
-avatars belong to their creators.
+The Muse avatar the agent wears was modeled by Kasties during the hackathon. The voice-over in
+the demo video and the requester's voice in the voice errand are Kasties too. The live runs took
+place in VRChat community worlds; the café is 咖啡厅 v1.31. The worlds and the other avatars
+belong to their creators.
 
 ## License
 

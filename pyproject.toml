@@ -25,6 +25,7 @@ muse-body = "muse_body.agent:main"
 muse-hear = "muse_body.hearing:main"
 muse-probe = "muse_body.probe:main"
 muse-replay = "muse_body.replay:main"
+muse-calls = "muse_body.calls:main"
 
 [build-system]
 requires = ["setuptools>=68"]

@@ -1,0 +1,32 @@
+{"t": 1793235383.0470603, "step": 1, "frame": "00001.jpg", "model": "Muse Spark 1.3", "purpose": "decide the next step from the frame", "returned": "follow blonde girl in dress; says 'Hi there! Nice to see you!'; sees: A blonde avatar stands near the far doorway of a lit corridor.", "derived": true}
+{"t": 1793235383.0470603, "step": 1, "frame": "00001.jpg", "model": "SAM 3.1", "purpose": "find people: \"character\"", "returned": "0 person box(es)", "derived": true}
+{"t": 1793235385.8394048, "step": 1, "frame": "00002.jpg", "model": "SAM 3.1", "purpose": "ground 'blonde girl in dress' (follow)", "returned": "box conf 0.68", "derived": true}
+{"t": 1793235388.641599, "step": 1, "frame": "00003.jpg", "model": "SAM 3.1", "purpose": "ground 'blonde girl in dress' (follow)", "returned": "box conf 0.63", "derived": true}
+{"t": 1793235392.3242586, "step": 1, "frame": "00004.jpg", "model": "SAM 3.1", "purpose": "ground 'blonde girl in dress' (approach)", "returned": "no match", "derived": true}
+{"t": 1793235395.7182925, "step": 1, "frame": "00005.jpg", "model": "SAM 3.1", "purpose": "ground 'blonde girl in dress' (approach)", "returned": "no match", "derived": true}
+{"t": 1793235398.780555, "step": 2, "frame": "00006.jpg", "model": "Muse Spark 1.3", "purpose": "decide the next step from the frame", "returned": "follow blonde girl with halo; says 'Hi there!'; sees: A blonde avatar stands ahead in the glowing hallway.", "derived": true}
+{"t": 1793235398.780555, "step": 2, "frame": "00006.jpg", "model": "SAM 3.1", "purpose": "find people: \"character\"", "returned": "1 person box(es)", "derived": true}
+{"t": 1793235400.9373853, "step": 2, "frame": "00007.jpg", "model": "SAM 3.1", "purpose": "ground 'blonde girl with halo' (follow)", "returned": "box conf 0.55", "derived": true}
+{"t": 1793235402.819802, "step": 2, "frame": "00008.jpg", "model": "SAM 3.1", "purpose": "ground 'blonde girl with halo' (follow)", "returned": "box conf 0.59", "derived": true}
+{"t": 1793235404.095583, "step": 2, "frame": "00009.jpg", "model": "SAM 3.1", "purpose": "ground 'blonde girl with halo' (follow)", "returned": "box conf 0.60", "derived": true}
+{"t": 1793235404.7725253, "step": 2, "frame": "00010.jpg", "model": "SAM 3.1", "purpose": "ground 'blonde girl with halo' (follow)", "returned": "box conf 0.68", "derived": true}
+{"t": 1793235406.3547602, "step": 2, "frame": "00011.jpg", "model": "SAM 3.1", "purpose": "ground 'blonde girl with halo' (follow)", "returned": "box conf 0.55", "derived": true}
+{"t": 1793235407.448048, "step": 2, "frame": "00012.jpg", "model": "SAM 3.1", "purpose": "ground 'blonde girl with halo' (follow)", "returned": "box conf 0.58", "derived": true}
+{"t": 1793235409.2204163, "step": 2, "frame": "00013.jpg", "model": "SAM 3.1", "purpose": "ground 'blonde girl with halo' (follow)", "returned": "box conf 0.59", "derived": true}
+{"t": 1793235409.894907, "step": 2, "frame": "00014.jpg", "model": "SAM 3.1", "purpose": "ground 'blonde girl with halo' (follow)", "returned": "box conf 0.59", "derived": true}
+{"t": 1793235410.5987015, "step": 2, "frame": "00015.jpg", "model": "SAM 3.1", "purpose": "ground 'blonde girl with halo' (follow)", "returned": "box conf 0.64", "derived": true}
+{"t": 1793235411.5352807, "step": 2, "frame": "00016.jpg", "model": "SAM 3.1", "purpose": "ground 'blonde girl with halo' (follow)", "returned": "box conf 0.59", "derived": true}
+{"t": 1793235412.3598669, "step": 2, "frame": "00017.jpg", "model": "SAM 3.1", "purpose": "ground 'blonde girl with halo' (follow)", "returned": "box conf 0.59", "derived": true}
+{"t": 1793235413.286203, "step": 2, "frame": "00018.jpg", "model": "SAM 3.1", "purpose": "ground 'blonde girl with halo' (follow)", "returned": "box conf 0.57", "derived": true}
+{"t": 1793235414.5008802, "step": 2, "frame": "00019.jpg", "model": "SAM 3.1", "purpose": "ground 'blonde girl with halo' (follow)", "returned": "box conf 0.58", "derived": true}
+{"t": 1793235415.5781693, "step": 2, "frame": "00020.jpg", "model": "SAM 3.1", "purpose": "ground 'blonde girl with halo' (follow)", "returned": "box conf 0.52", "derived": true}
+{"t": 1793235416.6173813, "step": 2, "frame": "00021.jpg", "model": "SAM 3.1", "purpose": "ground 'blonde girl with halo' (follow)", "returned": "box conf 0.65", "derived": true}
+{"t": 1793235418.7285662, "step": 2, "frame": "00022.jpg", "model": "SAM 3.1", "purpose": "ground 'blonde girl with halo' (follow)", "returned": "box conf 0.58", "derived": true}
+{"t": 1793235424.125252, "step": 3, "frame": "00023.jpg", "model": "Muse Spark 1.3", "purpose": "decide the next step from the frame", "returned": "wave; says 'Nice hanging out with you!'; sees: Blonde cat-girl with halo stands close by the glowing wall.", "derived": true}
+{"t": 1793235424.125252, "step": 3, "frame": "00023.jpg", "model": "SAM 3.1", "purpose": "find people: \"character\"", "returned": "1 person box(es)", "derived": true}
+{"t": 1793235430.7420747, "step": 4, "frame": "00024.jpg", "model": "Muse Spark 1.3", "purpose": "decide the next step from the frame", "returned": "wait; sees: Blonde cat-girl avatar with halo stands close beside a glowing wall.", "derived": true}
+{"t": 1793235430.7420747, "step": 4, "frame": "00024.jpg", "model": "SAM 3.1", "purpose": "find people: \"character\"", "returned": "1 person box(es)", "derived": true}
+{"t": 1793235436.492626, "step": 5, "frame": "00025.jpg", "model": "Muse Spark 1.3", "purpose": "decide the next step from the frame", "returned": "wait; sees: Blonde girl with halo standing by glowing wall right in front of me.", "derived": true}
+{"t": 1793235436.492626, "step": 5, "frame": "00025.jpg", "model": "SAM 3.1", "purpose": "find people: \"character\"", "returned": "0 person box(es)", "derived": true}
+{"t": 1793235440.417842, "step": 6, "frame": "00026.jpg", "model": "Muse Spark 1.3", "purpose": "decide the next step from the frame", "returned": "wait; sees: I see the blonde girl with halo standing still by the glowing wall in…", "derived": true}
+{"t": 1793235440.417842, "step": 6, "frame": "00026.jpg", "model": "SAM 3.1", "purpose": "find people: \"character\"", "returned": "1 person box(es)", "derived": true}

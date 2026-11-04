@@ -1,0 +1,50 @@
+{"t": 1793749174.2865028, "step": 1, "frame": "00001.jpg", "model": "Muse Spark 1.3", "purpose": "decide the next step from the frame", "returned": "approach tan furry creature; says 'hey hi!'; sees: A small tan furry avatar stands in a modern lounge near a TV and couc…", "derived": true}
+{"t": 1793749174.2865028, "step": 1, "frame": "00001.jpg", "model": "SAM 3.1", "purpose": "find people: \"character\"", "returned": "1 person box(es)", "derived": true}
+{"t": 1793749175.6046467, "step": 1, "frame": "00002.jpg", "model": "SAM 3.1", "purpose": "ground 'tan furry creature' (approach)", "returned": "box conf 0.83", "derived": true}
+{"t": 1793749184.6886013, "step": 2, "frame": "00003.jpg", "model": "Muse Voice Transcribe", "purpose": "transcribe what VRChat played", "returned": "'Hello Muse, how are you doing?'", "derived": true}
+{"t": 1793749184.6886013, "step": 2, "frame": "00003.jpg", "model": "Muse Spark 1.3", "purpose": "decide the next step from the frame", "returned": "say; replies \"I'm doing great, thanks for asking! How are you?\"; sees: A tan furry creature stands close in a modern lounge", "derived": true}
+{"t": 1793749184.6886013, "step": 2, "frame": "00003.jpg", "model": "SAM 3.1", "purpose": "find people: \"character\"", "returned": "1 person box(es)", "derived": true}
+{"t": 1793749192.6517289, "step": 3, "frame": "00004.jpg", "model": "Muse Spark 1.3", "purpose": "decide the next step from the frame", "returned": "wait; sees: A tan furry creature stands close in front of me in a cafe lounge.", "derived": true}
+{"t": 1793749192.6517289, "step": 3, "frame": "00004.jpg", "model": "SAM 3.1", "purpose": "find people: \"character\"", "returned": "1 person box(es)", "derived": true}
+{"t": 1793749201.107102, "step": 4, "frame": "00005.jpg", "model": "Muse Voice Transcribe", "purpose": "transcribe what VRChat played", "returned": "\"I am doing fine. But I can't seem to find the menu for this place. Could you please find it for me?\"", "derived": true}
+{"t": 1793749201.107102, "step": 4, "frame": "00005.jpg", "model": "Muse Spark 1.3", "purpose": "decide the next step from the frame", "returned": "look_around cafe menu; replies \"Sure! I'll find the menu for you!\"; sees: A tan furry avatar stands close in a cafe lounge.", "derived": true}
+{"t": 1793749201.107102, "step": 4, "frame": "00005.jpg", "model": "SAM 3.1", "purpose": "find people: \"character\"", "returned": "1 person box(es)", "derived": true}
+{"t": 1793749203.2260501, "step": 4, "frame": "00006.jpg", "model": "SAM 3.1", "purpose": "find 'cafe menu' (turned 45 deg)", "returned": "no match", "derived": true}
+{"t": 1793749203.2260501, "step": 4, "frame": "00006.jpg", "model": "SAM 3.1", "purpose": "find 'menu' (turned 45 deg)", "returned": "no match", "derived": true}
+{"t": 1793749205.3965673, "step": 4, "frame": "00007.jpg", "model": "SAM 3.1", "purpose": "find 'cafe menu' (turned 90 deg)", "returned": "no match", "derived": true}
+{"t": 1793749205.3965673, "step": 4, "frame": "00007.jpg", "model": "SAM 3.1", "purpose": "find 'menu' (turned 90 deg)", "returned": "no match", "derived": true}
+{"t": 1793749207.7235801, "step": 4, "frame": "00008.jpg", "model": "SAM 3.1", "purpose": "find 'cafe menu' (turned 135 deg)", "returned": "no match", "derived": true}
+{"t": 1793749207.7235801, "step": 4, "frame": "00008.jpg", "model": "SAM 3.1", "purpose": "find 'menu' (turned 135 deg)", "returned": "no match", "derived": true}
+{"t": 1793749213.063495, "step": 4, "frame": "00009.jpg", "model": "SAM 3.1", "purpose": "find 'cafe menu' (turned 180 deg)", "returned": "2 distinct match(es) from both phrases", "derived": true}
+{"t": 1793749213.063495, "step": 4, "frame": "00009.jpg", "model": "SAM 3.1", "purpose": "find 'menu' (turned 180 deg)", "returned": "2 distinct match(es) from both phrases", "derived": true}
+{"t": 1793749213.063495, "step": 4, "frame": "00009.jpg", "model": "Muse Spark 1.3", "purpose": "pick the real 'cafe menu' among 2 numbered matches", "returned": "box 2: box 2 is physical menu standing on counter", "derived": true}
+{"t": 1793749218.8655796, "step": 5, "frame": "00010.jpg", "model": "Muse Spark 1.3", "purpose": "decide the next step from the frame", "returned": "grab black clipboard; sees: I see the cafe counter with a menu clipboard on it.", "derived": true}
+{"t": 1793749218.8655796, "step": 5, "frame": "00010.jpg", "model": "SAM 3.1", "purpose": "find people: \"character\"", "returned": "0 person box(es)", "derived": true}
+{"t": 1793749220.384776, "step": 5, "frame": "00011.jpg", "model": "SAM 3.1", "purpose": "ground 'black clipboard' (approach)", "returned": "box conf 0.93", "derived": true}
+{"t": 1793749222.174378, "step": 5, "frame": "00012.jpg", "model": "SAM 3.1", "purpose": "ground 'black clipboard' (approach)", "returned": "box conf 0.93", "derived": true}
+{"t": 1793749223.101692, "step": 5, "frame": "00013.jpg", "model": "SAM 3.1", "purpose": "ground 'black clipboard' (aim)", "returned": "box", "derived": true}
+{"t": 1793749224.9861436, "step": 5, "frame": "00014.jpg", "model": "SAM 3.1", "purpose": "ground 'black clipboard' (aim)", "returned": "box", "derived": true}
+{"t": 1793749228.6096005, "step": 5, "frame": "00015.jpg", "model": "Muse Spark 1.3", "purpose": "is the hand holding something? (HUD 'Drop' prompt)", "returned": "yes: Drop prompt with B icon visible", "derived": true}
+{"t": 1793749228.6096005, "step": 5, "frame": "00015.jpg", "model": "SAM 3.1", "purpose": "locate the held 'black clipboard'", "returned": "box", "derived": true}
+{"t": 1793749233.7650867, "step": 6, "frame": "00016.jpg", "model": "Muse Spark 1.3", "purpose": "decide the next step from the frame", "returned": "look_around; sees: cafe counter with menu stand where clipboard was picked up", "derived": true}
+{"t": 1793749233.7650867, "step": 6, "frame": "00016.jpg", "model": "SAM 3.1", "purpose": "find people: \"character\"", "returned": "0 person box(es)", "derived": true}
+{"t": 1793749235.5589197, "step": 6, "frame": "00017.jpg", "model": "SAM 3.1", "purpose": "find people: \"character\" (turned 30 deg)", "returned": "0 person box(es)", "derived": true}
+{"t": 1793749237.5862901, "step": 6, "frame": "00018.jpg", "model": "SAM 3.1", "purpose": "find people: \"character\" (turned 60 deg)", "returned": "0 person box(es)", "derived": true}
+{"t": 1793749239.5408182, "step": 6, "frame": "00019.jpg", "model": "SAM 3.1", "purpose": "find people: \"character\" (turned 90 deg)", "returned": "0 person box(es)", "derived": true}
+{"t": 1793749241.2884474, "step": 6, "frame": "00020.jpg", "model": "SAM 3.1", "purpose": "find people: \"character\" (turned 120 deg)", "returned": "0 person box(es)", "derived": true}
+{"t": 1793749242.897081, "step": 6, "frame": "00021.jpg", "model": "SAM 3.1", "purpose": "find people: \"character\" (turned 150 deg)", "returned": "0 person box(es)", "derived": true}
+{"t": 1793749244.2126703, "step": 6, "frame": "00022.jpg", "model": "SAM 3.1", "purpose": "find people: \"character\" (turned 180 deg)", "returned": "1 person box(es)", "derived": true}
+{"t": 1793749249.7924683, "step": 7, "frame": "00023.jpg", "model": "Muse Spark 1.3", "purpose": "decide the next step from the frame", "returned": "give tan furry creature; says \"Here's the menu you asked for!\"; sees: I see the tan furry creature in front of me while holding the cafe me…", "derived": true}
+{"t": 1793749249.7924683, "step": 7, "frame": "00023.jpg", "model": "SAM 3.1", "purpose": "find people: \"character\"", "returned": "1 person box(es)", "derived": true}
+{"t": 1793749251.1675122, "step": 7, "frame": "00024.jpg", "model": "SAM 3.1", "purpose": "ground 'tan furry creature' (approach)", "returned": "box conf 0.67", "derived": true}
+{"t": 1793749252.7188563, "step": 7, "frame": "00025.jpg", "model": "SAM 3.1", "purpose": "ground 'tan furry creature' (approach)", "returned": "box conf 0.78", "derived": true}
+{"t": 1793749263.0931938, "step": 8, "frame": "00026.jpg", "model": "Muse Spark 1.3", "purpose": "decide the next step from the frame", "returned": "wait; sees: I see a cafe interior with the menu clipboard in view and a tan furry…", "derived": true}
+{"t": 1793749263.0931938, "step": 8, "frame": "00026.jpg", "model": "SAM 3.1", "purpose": "find people: \"character\"", "returned": "0 person box(es)", "derived": true}
+{"t": 1793749273.423444, "step": 9, "frame": "00027.jpg", "model": "Muse Voice Transcribe", "purpose": "transcribe what VRChat played", "returned": "'Perfect. Thank you so much'", "derived": true}
+{"t": 1793749273.423444, "step": 9, "frame": "00027.jpg", "model": "Muse Spark 1.3", "purpose": "decide the next step from the frame", "returned": "wait; replies \"You're very welcome! Enjoy!\"; sees: Tan furry avatar stands very close in front of me in the cafe lobby.", "derived": true}
+{"t": 1793749273.423444, "step": 9, "frame": "00027.jpg", "model": "SAM 3.1", "purpose": "find people: \"character\"", "returned": "1 person box(es)", "derived": true}
+{"t": 1793749282.308405, "step": 10, "frame": "00028.jpg", "model": "Muse Voice Transcribe", "purpose": "transcribe what VRChat played", "returned": "'uh can you tell me a joke'", "derived": true}
+{"t": 1793749282.308405, "step": 10, "frame": "00028.jpg", "model": "Muse Spark 1.3", "purpose": "decide the next step from the frame", "returned": "wait; replies \"Sure! Why don't scientists trust atoms? Because they make up everything!\"; sees: Tan furry avatar stands close in front of me in the cafe", "derived": true}
+{"t": 1793749282.308405, "step": 10, "frame": "00028.jpg", "model": "SAM 3.1", "purpose": "find people: \"character\"", "returned": "1 person box(es)", "derived": true}
+{"t": 1793749289.3035305, "step": 11, "frame": "00029.jpg", "model": "Muse Spark 1.3", "purpose": "decide the next step from the frame", "returned": "wait; sees: I see the tan furry creature standing close in front of me in the caf…", "derived": true}
+{"t": 1793749289.3035305, "step": 11, "frame": "00029.jpg", "model": "SAM 3.1", "purpose": "find people: \"character\"", "returned": "1 person box(es)", "derived": true}
