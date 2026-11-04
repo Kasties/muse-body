@@ -19,6 +19,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from .config import Settings
+from .meta_api import CallLog
 
 RATE = 24_000  # PCM_24KHZ, the model's native rate
 CHUNK = RATE * 80 // 1000  # 80 ms frames, as in Meta's examples
@@ -41,10 +42,14 @@ def to_pcm(samples: np.ndarray) -> bytes:
 class Ears:
     """Streams the speaker loopback to Muse Voice Transcribe and keeps what it heard."""
 
-    def __init__(self, settings: Settings, echo: bool = True):
+    def __init__(self, settings: Settings, echo: bool = True, calls: CallLog | None = None):
         self.url = settings.base_url.replace("https://", "wss://", 1).rstrip("/") + "/asr/realtime"
         self.key, self.model = settings.api_key, settings.asr_model
         self.echo = echo
+        # Each realtime session (with the id the server gave it) and each finished transcript.
+        self.calls = calls or CallLog(None)
+        self._session: str | None = None
+        self._session_t = 0.0
         self.error: str | None = None
         self._heard: list[Heard] = []
         self._open: dict[object, float] = {}  # turnId -> when its speech started
@@ -94,8 +99,13 @@ class Ears:
             if kind == "speechStart":
                 self._open[event.get("turnId")] = time.time()
             elif kind == "speechComplete":
-                self._open.pop(event.get("turnId"), None)
+                t0 = self._open.pop(event.get("turnId"), None)
                 text = str(event.get("transcript") or "").strip()
+                now = time.time()
+                self.calls.write({"t": now, "api": "asr/realtime", "model": self.model, "event": "transcript",
+                                  "session_id": self._session, "turn_id": event.get("turnId"),
+                                  "speech_seconds": round(now - t0, 3) if t0 else None,
+                                  "audio_ms": event.get("audioProcessedMs"), "transcript": text})
                 if text:
                     self._heard.append(Heard(text, time.time()))
                     if self.echo:
@@ -138,10 +148,15 @@ class Ears:
         while not self._stop.is_set():
             try:
                 async with websockets.connect(self.url, open_timeout=30) as ws:
+                    t0 = time.time()
                     await ws.send(json.dumps(self.handshake()))
                     ack = json.loads(await ws.recv())
                     if "sessionId" not in ack:
                         raise RuntimeError(f"handshake refused: {ack}")
+                    with self._lock:
+                        self._session, self._session_t = str(ack["sessionId"]), t0
+                    self.calls.write({"t": t0, "api": "asr/realtime", "model": self.model, "event": "session",
+                                      "session_id": self._session, "seconds": round(time.time() - t0, 3)})
                     backoff = 1.0
                     while not self._q.empty():  # start from now, not from audio queued offline
                         self._q.get_nowait()

@@ -148,6 +148,17 @@ muse-replay runs\<timestamp>             # writes runs\<timestamp>\replay.mp4
 muse-replay runs\<timestamp> --still 12  # one frame as a PNG, for checking
 ```
 
+### Checking which API calls a run made
+
+Every call to the Meta Model API is written to `runs\<timestamp>\api_calls.jsonl` as it
+finishes, one JSON line each: when it started (`t`, Unix seconds), the endpoint and model, how
+long it took, the HTTP status, and what the API sent back to identify it (the response `id`,
+`created`, token `usage`, and any request-id headers). Muse Voice Transcribe adds a line per
+realtime session, with the `sessionId` the server gave it, and a line per finished transcript.
+The key is never written. The replay shows these calls in its bottom-right corner as they
+finish, so each decision on screen can be matched to the call behind it, and the times and
+counts can be checked against the usage page of the Meta developer dashboard.
+
 ### If something goes wrong
 
 | You see | What to do |

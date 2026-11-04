@@ -17,7 +17,7 @@ from .body import GESTURES, THINKING_PARAM, Body
 from .capture import Camera, is_foreground
 from .config import Settings
 from .hearing import Ears
-from .meta_api import MetaClient, extract_json
+from .meta_api import CallLog, MetaClient, extract_json
 from .sam_format import Detection
 from .senses import Senses
 from .steer import (SteerParams, bearing_deg, covered, elevation_deg, iou, pick, screen_x, screen_y,
@@ -250,7 +250,9 @@ class Errands:
 class Agent:
     def __init__(self, settings: Settings, goal: str, dry_run: bool = False, log_dir: Path | None = None,
                  locomotion: str = "pad", hear: bool = True):
-        self.api = MetaClient(settings)
+        # Every Meta Model API call of the run, for checking it against the API's records.
+        self.calls = CallLog(log_dir / "api_calls.jsonl" if log_dir else None)
+        self.api = MetaClient(settings, calls=self.calls)
         self.dry_run = dry_run
         self.cam = Camera()
         self.body = Body(settings.osc_host, settings.osc_port, dry_run=dry_run, locomotion=locomotion)
@@ -261,7 +263,7 @@ class Agent:
             print(f"[senses] OSC output not available on {settings.osc_in_port}: {e}")
             self.senses = None
         # Voices around the avatar, as VRChat plays them, written down by Muse Voice Transcribe.
-        self.ears: Ears | None = Ears(settings).start() if hear else None
+        self.ears: Ears | None = Ears(settings, calls=self.calls).start() if hear else None
         self.steer_params = SteerParams(fov_v_deg=settings.fov_v_deg)
         self.goal = goal
         self.memory = Memory()

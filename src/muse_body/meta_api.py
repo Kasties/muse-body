@@ -6,6 +6,9 @@ import base64
 import io
 import json
 import re
+import threading
+import time
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -13,6 +16,31 @@ from PIL import Image
 
 from .config import Settings
 from .sam_format import Detection, parse
+
+
+class CallLog:
+    """One JSON line per Meta Model API call (runs/<name>/api_calls.jsonl), so a run can be checked
+    against the API's own records: when each call started, how long it took, which model and
+    endpoint answered, and the ids and token usage the API sent back. The key is never written."""
+
+    ID_HEADER = re.compile(r"(^|-)(request|trace|correlation)(-|$)|(^|-)id$", re.I)
+
+    def __init__(self, path: Path | None):
+        self.path = path
+        self._lock = threading.Lock()
+
+    def write(self, record: dict[str, Any]) -> None:
+        if self.path is None:
+            return
+        with self._lock:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    @classmethod
+    def ids(cls, response: httpx.Response) -> dict[str, str]:
+        """The response headers that identify the request on Meta's side."""
+        return {k.lower(): v for k, v in response.headers.items() if cls.ID_HEADER.search(k)}
 
 
 def to_data_url(image: Image.Image, quality: int = 85) -> str:
@@ -47,16 +75,41 @@ def _responses_text(payload: dict[str, Any]) -> str:
 
 
 class MetaClient:
-    def __init__(self, settings: Settings, timeout: float = 60.0):
+    def __init__(self, settings: Settings, timeout: float = 60.0, calls: CallLog | None = None,
+                 transport: httpx.BaseTransport | None = None):
         self.settings = settings
+        self.calls = calls or CallLog(None)
         self.http = httpx.Client(
             base_url=settings.base_url,
             headers={"Authorization": f"Bearer {settings.api_key}"},
             timeout=timeout,
+            transport=transport,
         )
 
     def close(self) -> None:
         self.http.close()
+
+    def _post(self, path: str, body: dict[str, Any], model: str, **info: Any) -> dict[str, Any]:
+        """POST to the API and log the call, whether it worked or not."""
+        t0 = time.time()
+        record: dict[str, Any] = {"t": t0, "api": path.strip("/"), "model": model, **info}
+        try:
+            r = self.http.post(path, json=body)
+        except httpx.HTTPError as e:
+            self.calls.write({**record, "seconds": round(time.time() - t0, 3), "error": type(e).__name__})
+            raise
+        record.update(seconds=round(time.time() - t0, 3), status=r.status_code, **CallLog.ids(r))
+        try:
+            payload = r.json()
+        except ValueError:
+            payload = {}
+        if isinstance(payload, dict):
+            for key in ("id", "model", "created", "usage"):
+                if payload.get(key) is not None:
+                    record["response_" + key if key in ("id", "model") else key] = payload[key]
+        self.calls.write(record)
+        r.raise_for_status()
+        return payload
 
     def see(self, image: Image.Image, system: str, prompt: str, max_tokens: int = 4096,
             reasoning_effort: str = "low") -> str:
@@ -65,6 +118,7 @@ class MetaClient:
         Muse Spark always reasons and max_tokens covers reasoning too: one decision
         spends 600-1000 reasoning tokens, so a 1024 cap can leave the answer empty.
         """
+        url = to_data_url(image)
         body = {
             "model": self.settings.model,
             "max_tokens": max_tokens,
@@ -75,17 +129,18 @@ class MetaClient:
                     "role": "user",
                     "content": [
                         {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": {"url": to_data_url(image)}},
+                        {"type": "image_url", "image_url": {"url": url}},
                     ],
                 },
             ],
         }
-        r = self.http.post("/chat/completions", json=body)
-        r.raise_for_status()
-        return r.json()["choices"][0]["message"]["content"] or ""
+        payload = self._post("/chat/completions", body, self.settings.model,
+                             image_kb=round(len(url) * 3 / 4 / 1024, 1), prompt_chars=len(system) + len(prompt))
+        return payload["choices"][0]["message"]["content"] or ""
 
     def segment(self, image: Image.Image, phrase: str, raw: bool = False) -> list[Detection] | str:
         """Find every instance of a short noun phrase with SAM 3.1."""
+        url = to_data_url(image)
         body = {
             "model": self.settings.sam_model,
             "input": [
@@ -94,14 +149,14 @@ class MetaClient:
                     "role": "user",
                     "content": [
                         {"type": "input_text", "text": phrase},
-                        {"type": "input_image", "image_url": to_data_url(image)},
+                        {"type": "input_image", "image_url": url},
                     ],
                 }
             ],
             "metadata": {"include_confidence": "true", "mask_encoding": "one_bit"},
             "stream": False,
         }
-        r = self.http.post("/responses", json=body)
-        r.raise_for_status()
-        text = _responses_text(r.json())
+        payload = self._post("/responses", body, self.settings.sam_model, phrase=phrase,
+                             image_kb=round(len(url) * 3 / 4 / 1024, 1))
+        text = _responses_text(payload)
         return text if raw else parse(text)

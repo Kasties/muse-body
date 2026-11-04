@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -109,6 +110,36 @@ def load(run: Path) -> list[Shot]:
     return shots
 
 
+def load_calls(run: Path) -> list[dict]:
+    """The run's Meta Model API calls (api_calls.jsonl, logged since Nov 4), ordered by when they
+    finished; empty for older runs."""
+    path = run / "api_calls.jsonl"
+    if not path.exists():
+        return []
+    calls = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    calls = [c for c in calls if c.get("event") != "session"]
+    for c in calls:
+        c["done"] = c["t"] + (c.get("seconds") or 0.0)
+    return sorted(calls, key=lambda c: c["done"])
+
+
+CALL_NAMES = {"chat/completions": "Muse Spark", "responses": "SAM 3.1", "asr/realtime": "Voice Transcribe"}
+
+
+def _calls(d: ImageDraw.ImageDraw, calls: list[dict], now: float, f: Fonts, x: int, y: int) -> None:
+    """The API calls finished by `now`: how many, and the last few with their clock time."""
+    done = [c for c in calls if c["done"] <= now]
+    d.text((x, y), f"META API CALLS  {len(done)}", fill=MUTED, font=f.label)
+    y += 32
+    for c in done[-5:]:
+        clock = time.strftime("%H:%M:%S", time.localtime(c["t"]))
+        name = CALL_NAMES.get(c.get("api"), c.get("api", "?"))
+        took = f"{c['seconds']:4.1f} s" if c.get("seconds") is not None else "  text"
+        failed = "" if c.get("status", 200) < 400 and not c.get("error") else " !"
+        d.text((x, y), f"{clock}  {name:<16}{took}{failed}", fill=TEXT, font=f.mono)
+        y += 28
+
+
 def _box(draw, box, scale, color, width, label=None, font=None):
     x1, y1, x2, y2 = (v * scale for v in box)
     draw.rectangle([x1, y1, x2, y2], outline=color, width=width)
@@ -119,7 +150,8 @@ def _box(draw, box, scale, color, width, label=None, font=None):
         draw.text((tx + 6, ty + 1), label, fill=BG, font=font)
 
 
-def render(shot: Shot, goal: str, t0: float, f: Fonts, recent_acts: list[str]) -> Image.Image:
+def render(shot: Shot, goal: str, t0: float, f: Fonts, recent_acts: list[str],
+           calls: list[dict] | None = None) -> Image.Image:
     img = Image.new("RGB", (W, H), BG)
     frame = Image.open(shot.frame).convert("RGB")
     scale = VIEW_W / frame.width
@@ -270,15 +302,19 @@ def render(shot: Shot, goal: str, t0: float, f: Fonts, recent_acts: list[str]) -
 
     # Bottom strip: what Muse Spark saw and why it chose this.
     d.rectangle([0, VIEW_H, VIEW_W, H], fill=BG)
+    text_w = VIEW_W - 56
+    if calls:  # the API calls so far, on the right of the strip
+        text_w = VIEW_W - 520
+        _calls(d, calls, shot.t, f, VIEW_W - 460, VIEW_H + 22)
     y = VIEW_H + 22
     d.text((28, y), "MUSE SPARK SEES", fill=MUTED, font=f.label)
     y += 30
-    for line in wrap(d, dec.get("observation") or "…", f.body, VIEW_W - 56)[:3]:
+    for line in wrap(d, dec.get("observation") or "…", f.body, text_w)[:3]:
         d.text((28, y), line, fill=TEXT, font=f.body)
         y += 32
     if dec.get("why"):
         y += 10
-        for line in wrap(d, f"why: {dec['why']}", f.small, VIEW_W - 56)[:2]:
+        for line in wrap(d, f"why: {dec['why']}", f.small, text_w)[:2]:
             d.text((28, y), line, fill=MUTED, font=f.small)
             y += 26
     return img
@@ -291,6 +327,7 @@ def write_video(run: Path, out: Path, goal: str, speed: float = 1.0,
     shots = load(run)
     if not shots:
         raise SystemExit(f"no logged frames in {run}")
+    calls = load_calls(run)
     f = Fonts()
     t0 = shots[0].t
     writer = imageio_ffmpeg.write_frames(str(out), (W, H), fps=FPS, codec="libx264",
@@ -301,7 +338,7 @@ def write_video(run: Path, out: Path, goal: str, speed: float = 1.0,
     try:
         for i, shot in enumerate(shots):
             recent = [(j, a) for j, a in recent if i - j < 4] + [(i, a) for a in shot.acts]
-            img = render(shot, goal, t0, f, [a for _, a in recent[-3:]])
+            img = render(shot, goal, t0, f, [a for _, a in recent[-3:]], calls)
             hold = min(max_hold, max(min_hold, shot.duration / speed))
             data = img.tobytes()
             for _ in range(max(1, round(hold * FPS))):
@@ -328,7 +365,8 @@ def main() -> None:
     if args.still is not None:
         shots = load(args.run)
         out = args.out or args.run / f"still_{args.still:03d}.png"
-        render(shots[args.still], goal, shots[0].t, Fonts(), shots[args.still].acts).save(out)
+        render(shots[args.still], goal, shots[0].t, Fonts(), shots[args.still].acts,
+               load_calls(args.run)).save(out)
         print(out)
         return
     out = args.out or args.run / "replay.mp4"
